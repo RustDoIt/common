@@ -1,0 +1,136 @@
+use wg_internal::network::NodeId;
+use std::collections::{HashMap, HashSet, VecDeque};
+
+pub enum NetworkError {
+    TopologyError,
+    PathNotFound,
+    NodeNotFound,
+}
+
+#[derive(Clone)]
+pub(crate) enum NodeType {
+    Drone,
+    MediaServer,
+    ChatServer,
+    Client
+}
+
+pub struct Node {
+    id: NodeId,
+    node_type: NodeType,
+    adjacents: Vec<NodeId>
+}
+
+impl Node {
+    pub(crate) fn new(id: NodeId, node_type: NodeType, adjacents: Vec<NodeId>) -> Self {
+        Self { id, node_type, adjacents }
+    }
+
+    pub(crate) fn get_id(&self) -> NodeId {
+        self.id
+    }
+
+    pub fn get_node_type(&self) -> NodeType {
+        self.node_type.clone()
+    }
+
+    pub fn get_adjacents(&self) -> &Vec<NodeId> {
+        &self.adjacents
+    }
+
+    fn add_adjacent(&mut self, adj: NodeId) {
+        self.adjacents.push(adj);
+    }
+
+    fn remove_adjacent(&mut self, adj: NodeId) {
+        let index_to_remove = self.adjacents.iter().position(|i| *i == adj).expect(&format!("Node with id {} not found in {} adjacents", adj, self.id));
+        let _ = self.adjacents.remove(index_to_remove);
+    }
+}
+
+impl std::fmt::Debug for Node{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "[ id: {:?}, adjacents: {:?} ]", self.id, self.adjacents)
+    }
+}
+
+pub struct Network {
+    nodes: Vec<Node>
+}
+
+impl Network {
+    pub fn new(root: Node) -> Self {
+        let mut nodes = vec![];
+        nodes.push(root);
+        Self { nodes }
+    }
+
+   pub fn add_node(&mut self, new_node: Node) -> Result<(), NetworkError> {
+        for adj in new_node.get_adjacents() {
+            if let Some(node) = self.nodes.iter_mut().find(|n| n.get_id() == *adj) {
+                match (new_node.get_node_type(), node.get_node_type()) {
+                    (_, NodeType::Drone) => {
+                        node.add_adjacent(*adj);
+                    }
+                    _ => {
+                        return Err(NetworkError::TopologyError);
+                    }
+                }
+            }
+        }
+
+        self.nodes.push(new_node);
+        Ok(())
+    }
+
+   pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), NetworkError> {
+        if let Some(_) = self.nodes.iter().find(|n| n.get_id() == node_id) {
+            for n in self.nodes.iter_mut() {
+                if n.get_adjacents().contains(&node_id){
+                    n.remove_adjacent(node_id);
+                }
+            }
+            let index_to_remove = self.nodes.iter().position(|n| n.get_id() == node_id).expect(&format!("Node {} is not a node of the network", node_id));
+            let _ = self.nodes.remove(index_to_remove);
+            return Ok(())
+        } else {
+            return Err(NetworkError::NodeNotFound)
+        }
+   }
+
+
+   pub fn find_path(&self, destination: NodeId) -> Result<Vec<NodeId>, NetworkError> {
+       let start = self.nodes[0].id;
+       let mut visited = HashSet::new();
+       let mut queue = VecDeque::new();
+       let mut parent_map = HashMap::new();
+
+       queue.push_back(start);
+       visited.insert(start);
+
+       while let Some(current) = queue.pop_front() {
+           if current == destination {
+               let mut path = vec![destination];
+               let mut current = destination;
+               while let Some(&parent) = parent_map.get(&current) {
+                   path.push(parent);
+                   current = parent;
+               }
+               path.reverse();
+               return Ok(path)
+           }
+
+           if let Some(node) = self.nodes.iter().find(|n| n.get_id() == current) {
+               for neighbor in node.get_adjacents().iter() {
+                    if !visited.contains(neighbor) {
+                        visited.insert(*neighbor);
+                        parent_map.insert(neighbor, current);
+                        queue.push_back(*neighbor);
+                    }
+               }
+           }
+       }
+       Err(NetworkError::PathNotFound)
+   }
+
+}
