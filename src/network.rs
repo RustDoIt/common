@@ -1,4 +1,5 @@
 use wg_internal::network::NodeId;
+use wg_internal::packet::NodeType;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 pub enum NetworkError {
@@ -7,13 +8,6 @@ pub enum NetworkError {
     NodeNotFound,
 }
 
-#[derive(Clone)]
-pub(crate) enum NodeType {
-    Drone,
-    MediaServer,
-    ChatServer,
-    Client
-}
 
 pub struct Node {
     id: NodeId,
