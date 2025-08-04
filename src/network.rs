@@ -8,7 +8,7 @@ pub enum NetworkError {
 }
 
 #[derive(Clone)]
-pub enum NodeType {
+pub(crate) enum NodeType {
     Drone,
     MediaServer,
     ChatServer,
@@ -22,11 +22,11 @@ pub struct Node {
 }
 
 impl Node {
-    pub fn new(id: NodeId, node_type: NodeType, adjacents: Vec<NodeId>) -> Self {
+    pub(crate) fn new(id: NodeId, node_type: NodeType, adjacents: Vec<NodeId>) -> Self {
         Self { id, node_type, adjacents }
     }
 
-    pub fn get_id(&self) -> NodeId {
+    pub(crate) fn get_id(&self) -> NodeId {
         self.id
     }
 
@@ -55,7 +55,7 @@ impl std::fmt::Debug for Node{
 }
 
 pub struct Network {
-    nodes: Vec<Node>
+    pub nodes: Vec<Node>
 }
 
 impl Network {
