@@ -86,12 +86,28 @@ impl Network {
             }
             let index_to_remove = self.nodes.iter().position(|n| n.get_id() == node_id).expect(&format!("Node {} is not a node of the network", node_id));
             let _ = self.nodes.remove(index_to_remove);
-            return Ok(())
+            return Ok(());
         } else {
-            return Err(NetworkError::NodeNotFound)
+            return Err(NetworkError::NodeNotFound);
         }
    }
 
+   pub fn update_node(&mut self, node_id: NodeId, adjacents: Vec<NodeId>) -> Result<(), NetworkError> {
+       if let Some(node) = self.nodes.iter_mut().find(|n| n.get_id() == node_id) {
+           for adj in adjacents {
+               if !node.get_adjacents().contains(&adj) {
+                   node.add_adjacent(adj);
+               }
+           }
+
+           // teoretically no need to update neighbors of the node since they should update
+           // automatically by the protocol
+
+           return Ok(());
+       } else {
+           return Err(NetworkError::NodeNotFound);
+       }
+   }
 
    pub fn find_path(&self, destination: NodeId) -> Result<Vec<NodeId>, NetworkError> {
        let start = self.nodes[0].id;
@@ -111,7 +127,7 @@ impl Network {
                    current = parent;
                }
                path.reverse();
-               return Ok(path)
+               return Ok(path);
            }
 
            if let Some(node) = self.nodes.iter().find(|n| n.get_id() == current) {
