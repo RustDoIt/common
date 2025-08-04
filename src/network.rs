@@ -32,11 +32,11 @@ impl Node {
         &self.adjacents
     }
 
-    fn add_adjacent(&mut self, adj: NodeId) {
+    pub fn add_adjacent(&mut self, adj: NodeId) {
         self.adjacents.push(adj);
     }
 
-    fn remove_adjacent(&mut self, adj: NodeId) {
+    pub fn remove_adjacent(&mut self, adj: NodeId) {
         let index_to_remove = self.adjacents.iter().position(|i| *i == adj).expect(&format!("Node with id {} not found in {} adjacents", adj, self.id));
         let _ = self.adjacents.remove(index_to_remove);
     }
