@@ -22,11 +22,11 @@ pub struct Node {
 }
 
 impl Node {
-    pub(crate) fn new(id: NodeId, node_type: NodeType, adjacents: Vec<NodeId>) -> Self {
+    pub fn new(id: NodeId, node_type: NodeType, adjacents: Vec<NodeId>) -> Self {
         Self { id, node_type, adjacents }
     }
 
-    pub(crate) fn get_id(&self) -> NodeId {
+    pub fn get_id(&self) -> NodeId {
         self.id
     }
 
