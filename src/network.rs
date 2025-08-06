@@ -1,4 +1,4 @@
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{oneshot, RwLock};
 use wg_internal::network::SourceRoutingHeader;
 use wg_internal::{network::NodeId, packet::Packet};
 use wg_internal::packet::{FloodRequest, NodeType, PacketType};
@@ -149,7 +149,7 @@ impl Network {
         Err(NetworkError::PathNotFound)
     }
 
-    pub fn discover(topology: Arc<Mutex<Self>>, client_id: NodeId, neighbors: SendingMap, flood_id: u64, session_id: u64, queue: PendingQueue) -> tokio::task::JoinHandle<()> {
+    pub fn discover(topology: Arc<RwLock<Self>>, client_id: NodeId, neighbors: SendingMap, flood_id: u64, session_id: u64, queue: PendingQueue) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn(async move {
             for (id, sender) in neighbors.write().await.iter_mut() {
                 match sender.send(
@@ -197,14 +197,10 @@ impl Network {
                                 for (node, neighbors) in neighbors.iter() {
                                     let (id, node_type) = node;
                                     let neigh_ids: Vec<u8> = neighbors.iter().map(|(n_id, _)| *n_id).collect();
-                                    {
-                                        let mut locked = topology.lock().await;
-                                        match locked.update_node(*id, neigh_ids.clone()) {
-                                            Ok(_) => {},
-                                            Err(_) => {
-                                                let _ = locked.add_node(Node::new(*id, *node_type, neigh_ids));
-
-                                            }
+                                    match topology.write().await.update_node(*id, neigh_ids.clone()) {
+                                        Ok(_) => {},
+                                        Err(_) => {
+                                            let _ = topology.write().await.add_node(Node::new(*id, *node_type, neigh_ids));
                                         }
                                     }
                                 }
