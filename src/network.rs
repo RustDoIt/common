@@ -169,11 +169,6 @@ impl Network {
 
                         let packet = rx.await.expect("Cannot receive from oneshot channel");
 
-                        {
-                            let mut lock = queue.lock().await;
-                            lock.remove(&session_id);
-                        }
-
                         match packet {
                             PacketType::FloodResponse(flood_response) => {
                                 let neighbors = flood_response.path_trace
