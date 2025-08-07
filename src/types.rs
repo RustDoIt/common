@@ -8,7 +8,8 @@ pub type SendingMap = Arc<RwLock<HashMap<NodeId, Sender<Packet>>>>;
 
 pub enum NodeEvent {
     PacketSent(Packet),
-    FloodStarted(u64)
+    FloodStarted(u64),
+    NodeRemoved(NodeId)
 }
 
 pub enum NodeCommand {
