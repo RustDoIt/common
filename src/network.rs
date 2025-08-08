@@ -149,7 +149,7 @@ impl Network {
         Err(NetworkError::PathNotFound)
     }
 
-    pub fn discover(topology: Arc<RwLock<Self>>, client_id: NodeId, neighbors: SendingMap, flood_id: u64, session_id: u64, queue: PendingQueue) -> tokio::task::JoinHandle<()> {
+    pub async fn discover(topology: Arc<RwLock<Self>>, client_id: NodeId, neighbors: SendingMap, flood_id: u64, session_id: u64, queue: PendingQueue) -> tokio::task::JoinHandle<()> {
         tokio::task::spawn(async move {
             for (id, sender) in neighbors.write().await.iter_mut() {
                 match sender.send(

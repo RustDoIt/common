@@ -12,9 +12,11 @@ pub enum NodeEvent {
     NodeRemoved(NodeId)
 }
 
+#[derive(Debug)]
 pub enum NodeCommand {
     AddSender(NodeId, Sender<Packet>),
-    StartFlood,
+    RemoveSender(NodeId),
+    Shutdown,
 }
 
 impl NodeCommand {
@@ -27,10 +29,6 @@ impl NodeCommand {
 
     pub fn is_add_sender(&self) -> bool {
         matches!(self, Self::AddSender(_, _))
-    }
-
-    pub fn is_start_flood(&self) -> bool {
-        matches!(self, Self::StartFlood)
     }
 }
 
