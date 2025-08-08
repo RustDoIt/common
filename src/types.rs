@@ -4,7 +4,7 @@ use std::{collections::HashMap, sync::Arc};
 use crossbeam_channel::Sender;
 
 pub type PendingQueue = Arc<Mutex<HashMap<u64, oneshot::Sender<PacketType>>>>;
-pub type SendingMap = Arc<RwLock<HashMap<NodeId, Sender<Packet>>>>;
+pub type NeighborsMap = Arc<RwLock<HashMap<NodeId, Sender<Packet>>>>;
 
 pub enum NodeEvent {
     PacketSent(Packet),
