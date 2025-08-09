@@ -1,10 +1,6 @@
-use tokio::sync::{oneshot, Mutex, RwLock};
-use wg_internal::{network::NodeId, packet::{Packet, PacketType}};
-use std::{collections::HashMap, sync::Arc};
+use wg_internal::{network::NodeId, packet::Packet};
 use crossbeam_channel::Sender;
 
-pub type PendingQueue = Arc<Mutex<HashMap<u64, oneshot::Sender<PacketType>>>>;
-pub type NeighborsMap = Arc<RwLock<HashMap<NodeId, Sender<Packet>>>>;
 
 pub enum NodeEvent {
     PacketSent(Packet),
