@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use crossbeam_channel::Sender;
 use wg_internal::{network::{NodeId, SourceRoutingHeader}, packet::{FloodRequest, FloodResponse, NodeType, Packet}};
 
-use crate::network::{Network, NetworkError, Node};
+use crate::{network::{Network, NetworkError, Node}, types::NodeEvent};
 
 pub struct RoutingHandler {
     id: NodeId,
@@ -10,18 +10,20 @@ pub struct RoutingHandler {
     neighbors: HashMap<NodeId, Sender<Packet>>,
     flood_seen: HashSet<(u64, NodeId)>,
     session_counter: u64,
-    flood_counter: u64
+    flood_counter: u64,
+    controller_send: Sender<NodeEvent>,
 }
 
 impl RoutingHandler {
-    pub fn new(id: NodeId, node_type: NodeType, neighbors: HashMap<NodeId, Sender<Packet>>) -> Self {
+    pub fn new(id: NodeId, node_type: NodeType, neighbors: HashMap<NodeId, Sender<Packet>>, controller_send: Sender<NodeEvent>) -> Self {
         Self {
             id,
             network_view: Network::new(Node::new(id, node_type, vec![])),
             neighbors,
             session_counter: 0,
             flood_counter: 0,
-            flood_seen: HashSet::new()
+            flood_seen: HashSet::new(),
+            controller_send
         }
     }
 
@@ -117,7 +119,7 @@ impl RoutingHandler {
 
             let packet = Packet::new_flood_response(route, session_id, flood_response);
 
-            self.send_packet_to_first_hop(packet);
+            self.send_packet_to_first_hop(packet)?;
 
             return Ok(());
         }
