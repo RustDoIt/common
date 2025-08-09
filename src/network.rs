@@ -69,7 +69,7 @@ impl Network {
         for adj in new_node.get_adjacents() {
             if let Some(node) = self.nodes.iter_mut().find(|n| n.get_id() == *adj) {
                 match (new_node.get_node_type(), node.get_node_type()) {
-                    (_, NodeType::Drone) => {
+                    (_, NodeType::Drone) | (NodeType::Drone, _) => {
                         node.add_adjacent(*adj);
                     }
                     _ => {
@@ -147,65 +147,5 @@ impl Network {
             }
         }
         Err(NetworkError::PathNotFound)
-    }
-
-    pub async fn discover(topology: Arc<RwLock<Self>>, client_id: NodeId, neighbors: SendingMap, flood_id: u64, session_id: u64, queue: PendingQueue) -> tokio::task::JoinHandle<()> {
-        tokio::task::spawn(async move {
-            for (id, sender) in neighbors.write().await.iter_mut() {
-                match sender.send(
-                    Packet::new_flood_request(
-                        SourceRoutingHeader::empty_route(),
-                        session_id,
-                        FloodRequest::new(flood_id, client_id )
-                    )
-                ) {
-                    Ok(_) => {
-                        let (tx, rx) = oneshot::channel();
-
-                        {
-                            let mut lock = queue.lock().await;
-                            lock.insert(session_id, tx);
-                        }
-
-                        let packet = rx.await.expect("Cannot receive from oneshot channel");
-
-                        match packet {
-                            PacketType::FloodResponse(flood_response) => {
-                                let neighbors = flood_response.path_trace
-                                    .iter()
-                                    .enumerate()
-                                    .map(|(i, &(node_id, node_type))| {
-                                        let mut neigh = Vec::new();
-
-                                        if i > 0 {
-                                            neigh.push(flood_response.path_trace[i - 1]);
-                                        }
-
-                                        if i + 1 < flood_response.path_trace.len() {
-                                            neigh.push(flood_response.path_trace[i + 1]);
-                                        }
-
-                                        ((node_id, node_type), neigh)
-                                    })
-                                .collect::<Vec<_>>();
-
-                                for (node, neighbors) in neighbors.iter() {
-                                    let (id, node_type) = node;
-                                    let neigh_ids: Vec<u8> = neighbors.iter().map(|(n_id, _)| *n_id).collect();
-                                    match topology.write().await.update_node(*id, neigh_ids.clone()) {
-                                        Ok(_) => {},
-                                        Err(_) => {
-                                            let _ = topology.write().await.add_node(Node::new(*id, *node_type, neigh_ids));
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
-                        }
-                    }
-                    Err(_) => eprintln!("Failed to send message to {}", id),
-                }
-            }
-        })
     }
 }
