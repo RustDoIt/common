@@ -1,11 +1,10 @@
 use wg_internal::{network::NodeId, packet::Packet};
 use crossbeam_channel::Sender;
 
-
 #[derive(Debug, Clone)]
 pub enum NodeEvent {
     PacketSent(Packet),
-    FloodStarted(u64),
+    FloodStarted(u64, NodeId),
     NodeRemoved(NodeId)
 }
 

@@ -1,20 +1,38 @@
 use crossbeam_channel::SendError;
 use wg_internal::network::NodeId;
 use wg_internal::packet::NodeType;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{collections::{HashMap, HashSet, VecDeque}, fmt::Display};
 
+#[derive(Debug)]
 pub enum NetworkError {
     TopologyError,
-    PathNotFound,
-    NodeNotFound,
-    SendError(String), 
+    PathNotFound(u8),
+    NodeNotFound(u8),
+    NodeIsNotANeighbor(u8),
+    SendError(String),
 }
+
+impl Display for NetworkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TopologyError => write!(f, "Topology error"),
+            Self::PathNotFound(id) => write!(f, "Path not found for node {}", id),
+            Self::NodeNotFound(id) => write!(f, "Node {} not found", id),
+            Self::NodeIsNotANeighbor(id) => write!(f, "Node {} is not a neighbor", id),
+            Self::SendError(msg) => write!(f, "Send error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for NetworkError {}
+
 
 impl<T: Send + std::fmt::Debug> From<SendError<T>> for NetworkError {
     fn from(value: SendError<T>) -> Self {
         NetworkError::SendError(format!("{:?}", value))
     }
 }
+
 
 pub struct Node {
     id: NodeId,

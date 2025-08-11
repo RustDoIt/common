@@ -41,6 +41,7 @@ impl RoutingHandler {
             self.session_counter,
             FloodRequest::new(self.flood_counter, self.id )
         );
+        self.controller_send.send(NodeEvent::FloodStarted(self.flood_counter, self.id))?;
         for (node_id, sender) in self.neighbors.clone().iter_mut() {
             if let Err(_) = self.send(sender, packet.clone()) {
                 self.remove_neighbor(*node_id)?;
@@ -48,7 +49,6 @@ impl RoutingHandler {
         }
        Ok(())
     }
-
 
     pub fn remove_neighbor(&mut self, node_id: NodeId) -> Result<(), NetworkError> {
         let _ = self.neighbors.remove(&node_id);
@@ -140,7 +140,7 @@ impl RoutingHandler {
         for (neighbor_id, neighbor) in self.neighbors.iter() {
             if *neighbor_id != prev_hop {
                 // TODO: send to controller
-                neighbor.send(new_flood_request.clone()).map_err(|_| NetworkError::NodeNotFound)?
+                neighbor.send(new_flood_request.clone())?;
             }
         }
         Ok(())
@@ -151,10 +151,9 @@ impl RoutingHandler {
         if packet.routing_header.hops.len() > 1 {
             let first_hop = packet.routing_header.hops[1];
             if let Some(sender) = self.neighbors.get(&first_hop) {
-                self.send(sender, packet).map_err(|_|
-                    NetworkError::NodeNotFound)?;
+                self.send(sender, packet)?;
             } else {
-                return Err(NetworkError::TopologyError);
+                return Err(NetworkError::NodeIsNotANeighbor(first_hop));
             }
         }
         Ok(())
