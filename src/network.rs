@@ -34,6 +34,7 @@ impl<T: Send + std::fmt::Debug> From<SendError<T>> for NetworkError {
 }
 
 
+#[derive(Clone)]
 pub struct Node {
     id: NodeId,
     node_type: NodeType,
@@ -74,6 +75,7 @@ impl std::fmt::Debug for Node{
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct Network {
     pub nodes: Vec<Node>
 }

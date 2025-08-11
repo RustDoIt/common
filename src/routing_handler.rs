@@ -1,9 +1,60 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::Sender;
-use wg_internal::{network::{NodeId, SourceRoutingHeader}, packet::{FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet}};
-
+use wg_internal::{network::{NodeId, SourceRoutingHeader}, packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet}};
 use crate::{network::{Network, NetworkError, Node}, types::NodeEvent};
 
+
+#[derive(Debug, Clone)]
+struct Buffer {
+    // represents packets which reached the destination
+    packets_received: HashMap<u64, Vec<(bool, Packet)>>,
+}
+
+impl Buffer {
+    fn new() -> Self {
+        Self {
+            packets_received: HashMap::new()
+        }
+    }
+
+    fn insert(&mut self, packet: Packet, session_id: u64) {
+        if let Some(v) = self.packets_received.get_mut(&session_id) {
+            v.push((false, packet));
+        } else {
+            let _ = self.packets_received.insert(session_id, vec![(false, packet)]);
+        }
+    }
+
+    fn get_not_received(&self, session_id: u64) -> Option<Vec<Packet>> {
+        let result: Vec<Packet> = self.packets_received
+            .get(&session_id)?
+            .iter()
+            .filter_map(|(r, p)| {
+                if !r {
+                    Some(p.clone())
+                } else {
+                    None
+                }
+            })
+        .collect();
+
+        Some(result)
+    }
+
+    fn mark_as_received(&mut self, session_id: u64, fragment_index: u64) -> Option<()> {
+        if let Some(f) = self.packets_received.get_mut(&session_id) {
+            let ( _received, frag  )= &f[fragment_index as usize];
+            f[fragment_index as usize] = (true, frag.clone());
+        }
+
+        if self.packets_received.get(&session_id)?.iter().all(|(r, _)| *r) {
+            return Some(());
+        }
+        None
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct RoutingHandler {
     id: NodeId,
     network_view: Network,
@@ -12,6 +63,7 @@ pub struct RoutingHandler {
     session_counter: u64,
     flood_counter: u64,
     controller_send: Sender<NodeEvent>,
+    buffer: Buffer
 }
 
 impl RoutingHandler {
@@ -23,7 +75,8 @@ impl RoutingHandler {
             session_counter: 0,
             flood_counter: 0,
             flood_seen: HashSet::new(),
-            controller_send
+            controller_send,
+            buffer: Buffer::new()
         }
     }
 
@@ -47,7 +100,7 @@ impl RoutingHandler {
                 self.remove_neighbor(*node_id)?;
             }
         }
-       Ok(())
+        Ok(())
     }
 
     pub fn remove_neighbor(&mut self, node_id: NodeId) -> Result<(), NetworkError> {
@@ -169,6 +222,50 @@ impl RoutingHandler {
             } else {
                 return Err(NetworkError::NodeIsNotANeighbor(first_hop));
             }
+        }
+        Ok(())
+    }
+
+    pub fn send_message(&mut self, message: &Vec<u8>, destination: NodeId) -> Result<(), NetworkError> {
+        let chunks: Vec<&[u8]> = message.chunks(128).collect();
+        let total_n_fragments = chunks.len();
+
+        self.session_counter += 1;
+        for (i, chunk) in chunks.into_iter().enumerate() {
+            // Pad/truncate to exactly 128 bytes
+            let mut arr = [0u8; 128];
+            arr[..chunk.len()].copy_from_slice(chunk);
+
+            let fragment = Fragment::new(
+                i as u64,
+                total_n_fragments as u64,
+                arr,
+            );
+
+            let shr = SourceRoutingHeader::new(
+                self.network_view.find_path(destination)?,
+                1,
+            ).without_loops();
+
+            let packet = Packet::new_fragment(shr, self.session_counter, fragment);
+
+            self.send_packet_to_first_hop(packet.clone())?;
+            self.buffer.insert(packet, self.session_counter);
+        }
+
+        Ok(())
+    }
+
+
+    pub fn handle_ack(&mut self, ack: Ack, session_id: u64) -> Option<()> {
+        self.buffer.mark_as_received(session_id, ack.fragment_index)
+    }
+
+    pub fn retry_send(&mut self, session_id: u64) -> Result<(), NetworkError> {
+        if let Some(packets) = self.buffer.get_not_received(session_id) {
+            for packet in packets {
+                self.send_packet_to_first_hop(packet)?;
+        }
         }
         Ok(())
     }
