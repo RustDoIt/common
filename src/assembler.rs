@@ -36,9 +36,10 @@ impl FragmentAssembler {
         let received = self.received_fragments.get(&communication_id).unwrap();
         let fragments = self.fragments.get(&communication_id).unwrap();
 
+        // check if all fragments has been received
         if fragments.len() as u64 == *expected && received.iter().all(|f| *f){
-            let fragments = self.fragments.get(&communication_id).unwrap();
-            let fragments = FragmentAssembler::sort_by_id(fragments);
+            let fragments = self.fragments.get_mut(&communication_id).unwrap();
+            fragments.sort_by(|t, n| t.fragment_index.cmp(&n.fragment_index));
             let mut data = vec![];
             for f in fragments.iter() {
                 data.copy_from_slice(&f.data);
@@ -49,14 +50,5 @@ impl FragmentAssembler {
             return Some(data);
         }
         None
-
-    }
-
-    fn sort_by_id(fragments: &Vec<Fragment>) -> Vec<Fragment> {
-        let mut result = fragments.clone();
-        for f in fragments.iter() {
-            result[f.fragment_index as usize] = f.clone();
-        }
-        result
     }
 }
