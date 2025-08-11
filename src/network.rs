@@ -1,24 +1,27 @@
-use tokio::sync::{oneshot, RwLock};
-use wg_internal::network::SourceRoutingHeader;
-use wg_internal::{network::NodeId, packet::Packet};
-use wg_internal::packet::{FloodRequest, NodeType, PacketType};
+use crossbeam_channel::SendError;
+use wg_internal::network::NodeId;
+use wg_internal::packet::NodeType;
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::sync::Arc;
-
-
 
 pub enum NetworkError {
     TopologyError,
     PathNotFound,
     NodeNotFound,
+    SendError(String), 
 }
 
+impl<T: Send + std::fmt::Debug> From<SendError<T>> for NetworkError {
+    fn from(value: SendError<T>) -> Self {
+        NetworkError::SendError(format!("{:?}", value))
+    }
+}
 
 pub struct Node {
     id: NodeId,
     node_type: NodeType,
     adjacents: Vec<NodeId>
 }
+
 
 impl Node {
     pub fn new(id: NodeId, node_type: NodeType, adjacents: Vec<NodeId>) -> Self {
