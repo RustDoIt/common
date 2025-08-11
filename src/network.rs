@@ -114,7 +114,7 @@ impl Network {
             let _ = self.nodes.remove(index_to_remove);
             return Ok(());
         } else {
-            return Err(NetworkError::NodeNotFound);
+            return Err(NetworkError::NodeNotFound(node_id));
         }
     }
 
@@ -131,8 +131,20 @@ impl Network {
 
             return Ok(());
         } else {
-            return Err(NetworkError::NodeNotFound);
+            return Err(NetworkError::NodeNotFound(node_id));
         }
+    }
+
+    pub fn change_node_type(&mut self, id: NodeId, new_type: NodeType) -> Result<(), NetworkError>{
+        if let Some(node) = self.nodes.iter_mut().find(|n| n.get_id() == id) {
+            if node.get_node_type() != new_type {
+                node.node_type = new_type;
+            } else {
+                return Err(NetworkError::TopologyError)
+            }
+        }
+
+        Ok(())
     }
 
     pub fn find_path(&self, destination: NodeId) -> Result<Vec<NodeId>, NetworkError> {
@@ -166,6 +178,6 @@ impl Network {
                 }
             }
         }
-        Err(NetworkError::PathNotFound)
+        Err(NetworkError::PathNotFound(destination))
     }
 }
