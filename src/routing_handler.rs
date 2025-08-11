@@ -269,4 +269,10 @@ impl RoutingHandler {
         }
         Ok(())
     }
+
+    pub fn send_ack(&self, shr: SourceRoutingHeader, session_id: u64, fragment_index: u64) -> Result<(), NetworkError> {
+        let packet = Packet::new_ack(shr, session_id, fragment_index);
+        self.send_packet_to_first_hop(packet)?;
+        Ok(())
+    }
 }
