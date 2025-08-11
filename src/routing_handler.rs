@@ -146,14 +146,14 @@ impl RoutingHandler {
         Ok(())
     }
 
-    pub fn handle_nack(&mut self, nack: Nack, id: NodeId) -> Result<(), NetworkError> {
+    pub fn handle_nack(&mut self, nack: Nack, sender_id: NodeId) -> Result<(), NetworkError> {
         match nack.nack_type {
             NackType::ErrorInRouting(id) | NackType::UnexpectedRecipient(id) => {
                 self.network_view.remove_node(id)?;
                 self.start_flood()?;
             },
 
-            NackType::DestinationIsDrone => self.network_view.change_node_type(id, NodeType::Drone)?,
+            NackType::DestinationIsDrone => self.network_view.change_node_type(sender_id, NodeType::Drone)?,
             _ => {}
         }
 
