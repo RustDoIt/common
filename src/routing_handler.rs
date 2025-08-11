@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use crossbeam_channel::Sender;
-use wg_internal::{network::{NodeId, SourceRoutingHeader}, packet::{FloodRequest, FloodResponse, NodeType, Packet}};
+use wg_internal::{network::{NodeId, SourceRoutingHeader}, packet::{FloodRequest, FloodResponse, Nack, NackType, NodeType, Packet}};
 
 use crate::{network::{Network, NetworkError, Node}, types::NodeEvent};
 
@@ -143,6 +143,18 @@ impl RoutingHandler {
                 neighbor.send(new_flood_request.clone())?;
             }
         }
+        Ok(())
+    }
+
+    pub fn handle_nack(&mut self, nack: Nack) -> Result<(), NetworkError> {
+        match nack.nack_type {
+            NackType::ErrorInRouting(id) | NackType::UnexpectedRecipient(id) => {
+                self.network_view.remove_node(id)?;
+                self.start_flood()?;
+            },
+            _ => {}
+        }
+
         Ok(())
     }
 
