@@ -27,4 +27,3 @@ impl NodeCommand {
         matches!(self, Self::AddSender(_, _))
     }
 }
-

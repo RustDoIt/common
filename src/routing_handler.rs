@@ -52,6 +52,14 @@ impl Buffer {
         }
         None
     }
+
+    fn get_fragement_by_id(&mut self, session_id: u64, fragment_index: u64) -> Option<Packet> {
+        if let Some(session) = self.packets_received.get(&session_id) {
+            session.iter().nth(fragment_index as usize).map(|(r, p)| if !r {Some(p.clone())} else { None })?
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -261,11 +269,18 @@ impl RoutingHandler {
         self.buffer.mark_as_received(session_id, ack.fragment_index)
     }
 
-    pub fn retry_send(&mut self, session_id: u64) -> Result<(), NetworkError> {
+    pub fn retry_send_all(&mut self, session_id: u64) -> Result<(), NetworkError> {
         if let Some(packets) = self.buffer.get_not_received(session_id) {
             for packet in packets {
                 self.send_packet_to_first_hop(packet)?;
+            }
         }
+        Ok(())
+    }
+
+    pub fn retry_send(&mut self, session_id: u64, fragment_index: u64) -> Result<(), NetworkError> {
+        if let Some(packet) = self.buffer.get_fragement_by_id(session_id, fragment_index) {
+            self.send_packet_to_first_hop(packet)?;
         }
         Ok(())
     }
