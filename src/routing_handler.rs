@@ -103,24 +103,22 @@ impl RoutingHandler {
             FloodRequest::new(self.flood_counter, self.id )
         );
         self.controller_send.send(NodeEvent::FloodStarted(self.flood_counter, self.id))?;
-        for (node_id, sender) in self.neighbors.clone().iter_mut() {
+        for (node_id, sender) in self.neighbors.clone().iter() {
             if let Err(_) = self.send(sender, packet.clone()) {
-                self.remove_neighbor(*node_id)?;
+                self.remove_neighbor(*node_id);
             }
         }
         Ok(())
     }
 
-    pub fn remove_neighbor(&mut self, node_id: NodeId) -> Result<(), NetworkError> {
+    pub fn remove_neighbor(&mut self, node_id: NodeId) {
         let _ = self.neighbors.remove(&node_id);
-        self.network_view.remove_node(node_id)?;
-        Ok(())
+        let _ = self.network_view.remove_node(node_id);
     }
 
-    pub fn add_neighbor(&mut self, node_id: NodeId, sender: Sender<Packet>) -> Result<(), NetworkError> {
+    pub fn add_neighbor(&mut self, node_id: NodeId, sender: Sender<Packet>) {
         let _ = self.neighbors.insert(node_id, sender);
-        self.network_view.update_node(self.id,vec![node_id])?;
-        Ok(())
+        let _ = self.network_view.update_node(self.id,vec![node_id]);
     }
 
     pub fn handle_flood_response(&mut self, flood_response: FloodResponse) -> Result<(), NetworkError> {
