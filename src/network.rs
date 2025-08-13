@@ -87,25 +87,22 @@ impl Network {
         Self { nodes }
     }
 
-    pub fn add_node(&mut self, new_node: Node) -> Result<(), NetworkError> {
+    pub fn add_node(&mut self, new_node: Node) {
         for adj in new_node.get_adjacents() {
             if let Some(node) = self.nodes.iter_mut().find(|n| n.get_id() == *adj) {
                 match (new_node.get_node_type(), node.get_node_type()) {
                     (_, NodeType::Drone) | (NodeType::Drone, _) => {
                         node.add_adjacent(*adj);
                     }
-                    _ => {
-                        return Err(NetworkError::TopologyError);
-                    }
+                    _ => {}
                 }
             }
         }
 
         self.nodes.push(new_node);
-        Ok(())
     }
 
-    pub fn remove_node(&mut self, node_id: NodeId) -> Result<(), NetworkError> {
+    pub fn remove_node(&mut self, node_id: NodeId) {
         if let Some(_) = self.nodes.iter().find(|n| n.get_id() == node_id) {
             for n in self.nodes.iter_mut() {
                 if n.get_adjacents().contains(&node_id){
@@ -114,9 +111,6 @@ impl Network {
             }
             let index_to_remove = self.nodes.iter().position(|n| n.get_id() == node_id).expect(&format!("Node {} is not a node of the network", node_id));
             let _ = self.nodes.remove(index_to_remove);
-            return Ok(());
-        } else {
-            return Err(NetworkError::NodeNotFound(node_id));
         }
     }
 
@@ -137,16 +131,12 @@ impl Network {
         }
     }
 
-    pub fn change_node_type(&mut self, id: NodeId, new_type: NodeType) -> Result<(), NetworkError>{
+    pub fn change_node_type(&mut self, id: NodeId, new_type: NodeType) {
         if let Some(node) = self.nodes.iter_mut().find(|n| n.get_id() == id) {
             if node.get_node_type() != new_type {
                 node.node_type = new_type;
-            } else {
-                return Err(NetworkError::TopologyError)
             }
         }
-
-        Ok(())
     }
 
     pub fn find_path(&self, destination: NodeId) -> Result<Vec<NodeId>, NetworkError> {
@@ -181,5 +171,91 @@ impl Network {
             }
         }
         Err(NetworkError::PathNotFound(destination))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_add_node() {
+        let root = Node::new(1, NodeType::Client, vec![2, 3]);
+        let mut network = Network::new(root);
+
+        let new_node = Node::new(2, NodeType::Client, vec![1]);
+        network.add_node(new_node);
+
+        assert_eq!(network.nodes.len(), 2);
+        assert!(network.nodes.iter().any(|n| n.get_id() == 2));
+    }
+
+    #[test]
+    fn test_remove_node() {
+        let root = Node::new(1, NodeType::Client, vec![2, 3]);
+        let mut network = Network::new(root);
+
+        let new_node = Node::new(2, NodeType::Client, vec![1]);
+        network.add_node(new_node);
+
+        network.remove_node(2);
+
+        assert_eq!(network.nodes.len(), 1);
+        assert!(!network.nodes.iter().any(|n| n.get_id() == 2));
+    }
+
+    #[test]
+    fn test_update_node() {
+        let root = Node::new(1, NodeType::Client, vec![2]);
+        let mut network = Network::new(root);
+
+        let new_node = Node::new(2, NodeType::Client, vec![1]);
+        network.add_node(new_node);
+
+        network.update_node(1, vec![3]).unwrap();
+
+        assert!(network.nodes[0].get_adjacents().contains(&3));
+    }
+
+    #[test]
+    fn test_change_node_type() {
+        let root = Node::new(1, NodeType::Client, vec![2]);
+        let mut network = Network::new(root);
+
+        network.change_node_type(1, NodeType::Drone);
+
+        assert_eq!(network.nodes[0].get_node_type(), NodeType::Drone);
+    }
+
+    #[test]
+    fn test_find_path() {
+        let root = Node::new(1, NodeType::Client, vec![2, 3]);
+        let mut network = Network::new(root);
+
+        let node2 = Node::new(2, NodeType::Client, vec![1, 4]);
+        let node3 = Node::new(3, NodeType::Client, vec![1]);
+        let node4 = Node::new(4, NodeType::Client, vec![2]);
+
+        network.add_node(node2);
+        network.add_node(node3);
+        network.add_node(node4);
+
+        let path = network.find_path(4).unwrap();
+
+        assert_eq!(path, vec![1, 2, 4]);
+    }
+
+    #[test]
+    fn test_find_path_not_found() {
+        let root = Node::new(1, NodeType::Client, vec![2]);
+        let mut network = Network::new(root);
+
+        let node2 = Node::new(2, NodeType::Client, vec![1]);
+        network.add_node(node2);
+
+        let result = network.find_path(3);
+
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().to_string(), "Path not found for node 3");
     }
 }
