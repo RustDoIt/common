@@ -7,7 +7,7 @@ use crate::{network::{Network, NetworkError, Node}, types::NodeEvent};
 #[derive(Debug, Clone)]
 struct Buffer {
     // represents packets which reached the destination
-    packets_received: HashMap<u64, Vec<(bool, Packet)>>,
+    packets_received: HashMap<(u64, NodeId), Vec<(bool, Packet)>>,
 }
 
 impl Buffer {
@@ -17,17 +17,19 @@ impl Buffer {
         }
     }
 
-    fn insert(&mut self, packet: Packet, session_id: u64) {
-        if let Some(v) = self.packets_received.get_mut(&session_id) {
+    fn insert(&mut self, packet: Packet, session_id: u64, from: NodeId) {
+        let id = (session_id, from);
+        if let Some(v) = self.packets_received.get_mut(&id) {
             v.push((false, packet));
         } else {
-            let _ = self.packets_received.insert(session_id, vec![(false, packet)]);
+            let _ = self.packets_received.insert(id, vec![(false, packet)]);
         }
     }
 
-    fn get_not_received(&self, session_id: u64) -> Option<Vec<Packet>> {
+    fn get_not_received(&self, session_id: u64, from: NodeId) -> Option<Vec<Packet>> {
+        let id = (session_id, from);
         let result: Vec<Packet> = self.packets_received
-            .get(&session_id)?
+            .get(&id)?
             .iter()
             .filter_map(|(r, p)| {
                 if !r {
@@ -41,21 +43,23 @@ impl Buffer {
         Some(result)
     }
 
-    fn mark_as_received(&mut self, session_id: u64, fragment_index: u64) -> Option<()> {
-        if let Some(f) = self.packets_received.get_mut(&session_id) {
+    fn mark_as_received(&mut self, session_id: u64, fragment_index: u64, form: NodeId) {
+        let id = (session_id, form);
+        if let Some(f) = self.packets_received.get_mut(&id) {
             let ( _received, frag  )= &f[fragment_index as usize];
             f[fragment_index as usize] = (true, frag.clone());
-        }
 
-        if self.packets_received.get(&session_id)?.iter().all(|(r, _)| *r) {
-            return Some(());
+            if f.iter().all(|(r, _)| *r) {
+                // If all fragments are received, remove the session
+                self.packets_received.remove(&id);
+            }
         }
-        None
     }
 
-    fn get_fragement_by_id(&mut self, session_id: u64, fragment_index: u64) -> Option<Packet> {
-        if let Some(session) = self.packets_received.get(&session_id) {
-            session.iter().nth(fragment_index as usize).map(|(r, p)| if !r {Some(p.clone())} else { None })?
+    fn get_fragment_by_id(&mut self, session_id: u64, fragment_index: u64, from: NodeId) -> Option<Packet> {
+        let id = (session_id, from);
+        if let Some(session) = self.packets_received.get(&id) {
+            session.iter().nth(fragment_index as usize).map(|(r, p)| if !r { Some(p.clone()) } else { None })?
         } else {
             None
         }
@@ -90,7 +94,9 @@ impl RoutingHandler {
 
     fn send(&self, neighbor: &Sender<Packet>, packet: Packet) -> Result<(), NetworkError> {
         neighbor.send(packet.clone())?;
-        self.controller_send.send(NodeEvent::PacketSent(packet))?;
+        self.controller_send.send(NodeEvent::PacketSent(packet)).map_err(
+            |_e| NetworkError::ControllerDisconnected
+        )?;
         Ok(())
     }
 
@@ -104,7 +110,7 @@ impl RoutingHandler {
         );
         self.controller_send.send(NodeEvent::FloodStarted(self.flood_counter, self.id))?;
         for (node_id, sender) in self.neighbors.clone().iter() {
-            if let Err(_) = self.send(sender, packet.clone()) {
+            if let Err(_) = sender.send(packet.clone()) {
                 self.remove_neighbor(*node_id);
             }
         }
@@ -121,7 +127,7 @@ impl RoutingHandler {
         let _ = self.network_view.update_node(self.id,vec![node_id]);
     }
 
-    pub fn handle_flood_response(&mut self, flood_response: FloodResponse) -> Result<(), NetworkError> {
+    pub fn handle_flood_response(&mut self, flood_response: FloodResponse) {
         if flood_response.flood_id == self.flood_counter {
             for (i, &(node_id, node_type)) in flood_response.path_trace.iter().enumerate() {
                 let mut neighbors = Vec::new();
@@ -139,11 +145,10 @@ impl RoutingHandler {
                 // Try to update existing node or add new one
                 if let Err(_) = self.network_view.update_node(node_id, neighbors.clone()) {
                     let new_node = Node::new(node_id, node_type, neighbors.clone());
-                    self.network_view.add_node(new_node)?;
+                    self.network_view.add_node(new_node);
                 }
             }
         }
-        Ok(())
     }
 
     pub fn handle_flood_request(&mut self, mut flood_request: FloodRequest, session_id: u64) -> Result<(), NetworkError> {
@@ -183,7 +188,7 @@ impl RoutingHandler {
 
             let packet = Packet::new_flood_response(route, session_id, flood_response);
 
-            self.send_packet_to_first_hop(packet)?;
+            self.try_send(packet)?;
 
             return Ok(());
         }
@@ -198,7 +203,6 @@ impl RoutingHandler {
 
         for (neighbor_id, neighbor) in self.neighbors.iter() {
             if *neighbor_id != prev_hop {
-                // TODO: send to controller
                 neighbor.send(new_flood_request.clone())?;
             }
         }
@@ -207,12 +211,16 @@ impl RoutingHandler {
 
     pub fn handle_nack(&mut self, nack: Nack, sender_id: NodeId) -> Result<(), NetworkError> {
         match nack.nack_type {
-            NackType::ErrorInRouting(id) | NackType::UnexpectedRecipient(id) => {
-                self.network_view.remove_node(id)?;
+            NackType::ErrorInRouting(id) => {
+                self.network_view.remove_node(id);
+
                 self.start_flood()?;
             },
-
-            NackType::DestinationIsDrone => self.network_view.change_node_type(sender_id, NodeType::Drone)?,
+            NackType::Dropped => {
+                self.network_view.remove_node(sender_id);
+                self.start_flood()?;
+            },
+            NackType::DestinationIsDrone => self.network_view.change_node_type(sender_id, NodeType::Drone),
             _ => {}
         }
 
@@ -230,6 +238,33 @@ impl RoutingHandler {
             }
         }
         Ok(())
+    }
+
+    fn try_send(&mut self, mut packet: Packet) -> Result<(), NetworkError> {
+        /// Tries to send a packet to next hop until it succeeds or there are no more neighbors.
+        /// If sending fails, it removes the first hop from the route and tries again.
+
+        let destination = packet
+            .routing_header
+            .destination()
+            .ok_or(NetworkError::NoDestination)?;
+
+        let mut packet_sent = false;
+        while !packet_sent && self.neighbors.len() > 0 {
+            if let Ok(_) = self.send_packet_to_first_hop(packet.clone()) {
+                packet_sent = true;
+            } else {
+                // If sending failed, remove the neighbor and try again
+                if let Some(first_hop) = packet.routing_header.hops.get(1) {
+                    self.remove_neighbor(*first_hop);
+                    let route = self.network_view.find_path(destination)?;
+                    packet.routing_header = SourceRoutingHeader::new(route, 1).without_loops();
+                }
+            }
+        }
+
+        Ok(())
+
     }
 
     pub fn send_message(&mut self, message: &Vec<u8>, destination: NodeId) -> Result<(), NetworkError> {
@@ -255,37 +290,140 @@ impl RoutingHandler {
 
             let packet = Packet::new_fragment(shr, self.session_counter, fragment);
 
-            self.send_packet_to_first_hop(packet.clone())?;
-            self.buffer.insert(packet, self.session_counter);
+            self.try_send(packet.clone())?;
+            self.buffer.insert(packet, self.session_counter, self.id);
         }
 
         Ok(())
     }
 
 
-    pub fn handle_ack(&mut self, ack: Ack, session_id: u64) -> Option<()> {
-        self.buffer.mark_as_received(session_id, ack.fragment_index)
+    pub fn handle_ack(&mut self, ack: Ack, session_id: u64, from: NodeId) {
+        self.buffer.mark_as_received(session_id, ack.fragment_index, from);
     }
 
-    pub fn retry_send_all(&mut self, session_id: u64) -> Result<(), NetworkError> {
-        if let Some(packets) = self.buffer.get_not_received(session_id) {
+    pub fn retry_send_all(&mut self, session_id: u64, from: NodeId) -> Result<(), NetworkError> {
+        if let Some(packets) = self.buffer.get_not_received(session_id, from) {
             for packet in packets {
-                self.send_packet_to_first_hop(packet)?;
+                self.try_send(packet)?;
             }
         }
         Ok(())
     }
 
-    pub fn retry_send(&mut self, session_id: u64, fragment_index: u64) -> Result<(), NetworkError> {
-        if let Some(packet) = self.buffer.get_fragement_by_id(session_id, fragment_index) {
-            self.send_packet_to_first_hop(packet)?;
+    pub fn retry_send(&mut self, session_id: u64, fragment_index: u64, from: NodeId) -> Result<(), NetworkError> {
+        if let Some(packet) = self.buffer.get_fragment_by_id(session_id, fragment_index, from) {
+            self.try_send(packet)?;
         }
         Ok(())
     }
 
-    pub fn send_ack(&self, shr: SourceRoutingHeader, session_id: u64, fragment_index: u64) -> Result<(), NetworkError> {
+    pub fn send_ack(&mut self, shr: SourceRoutingHeader, session_id: u64, fragment_index: u64) -> Result<(), NetworkError> {
         let packet = Packet::new_ack(shr, session_id, fragment_index);
-        self.send_packet_to_first_hop(packet)?;
+        self.try_send(packet)?;
         Ok(())
+    }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossbeam_channel::unbounded;
+    use wg_internal::packet::PacketType;
+
+    #[test]
+    fn test_add_neighbor() {
+        let (sender, _receiver) = unbounded();
+        let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
+
+        let (neighbor_sender, _neighbor_receiver) = unbounded();
+        handler.add_neighbor(2, neighbor_sender);
+
+        assert!(handler.neighbors.contains_key(&2));
+        assert!(handler.network_view.nodes[0].get_adjacents().contains(&2));
+    }
+
+    #[test]
+    fn test_remove_neighbor() {
+        let (sender, _receiver) = unbounded();
+        let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
+
+        let (neighbor_sender, _neighbor_receiver) = unbounded();
+        handler.add_neighbor(2, neighbor_sender);
+        handler.remove_neighbor(2);
+
+        assert!(!handler.neighbors.contains_key(&2));
+        assert!(!handler.network_view.nodes[0].get_adjacents().contains(&2));
+    }
+
+    #[test]
+    fn test_start_flood() {
+        let (sender, receiver) = unbounded();
+        let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
+
+        let (neighbor_sender, neighbor_receiver) = unbounded();
+        handler.add_neighbor(2, neighbor_sender);
+
+        handler.start_flood().unwrap();
+
+        let packet = receiver.try_recv().unwrap();
+        assert!(matches!(packet, NodeEvent::FloodStarted(_, _)));
+
+        let neighbor_packet = neighbor_receiver.try_recv().unwrap();
+        assert!(matches!(neighbor_packet.pack_type, PacketType::FloodRequest(_)));
+    }
+
+    #[test]
+    fn test_handle_flood_response() {
+        let (sender, _receiver) = unbounded();
+        let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
+        handler.flood_counter = 1;
+
+        let flood_response = FloodResponse {
+            flood_id: 1,
+            path_trace: vec![(2, NodeType::Drone), (3, NodeType::Client)],
+        };
+
+        handler.handle_flood_response(flood_response);
+
+        assert!(handler.network_view.nodes.iter().any(|n| n.get_id() == 2));
+        assert!(handler.network_view.nodes.iter().any(|n| n.get_id() == 3));
+    }
+
+    #[test]
+    fn test_send_message() {
+        let (sender, _receiver) = unbounded();
+        let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
+
+        let (neighbor_sender, neighbor_receiver) = unbounded();
+        handler.add_neighbor(2, neighbor_sender);
+
+        let message= b"Hello world".to_vec(); // 128 bytes total
+
+        handler.send_message(&message, 2).unwrap();
+
+        let packet = neighbor_receiver.try_recv().unwrap();
+        assert!(matches!(packet.pack_type, PacketType::MsgFragment(_)));
+    }
+
+    #[test]
+    fn test_handle_ack() {
+        let (sender, _receiver) = unbounded();
+        let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
+
+        let (neighbor_sender, _neighbor_receiver) = unbounded();
+        handler.add_neighbor(2, neighbor_sender);
+
+        let message = b"Hello, world!".to_vec();
+        handler.send_message(&message, 2).unwrap();
+
+        let ack = Ack {
+            fragment_index: 0,
+        };
+
+        handler.handle_ack(ack, 1, 2);
+
+        assert!(handler.buffer.get_not_received(1, 2).is_none());
     }
 }

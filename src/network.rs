@@ -10,6 +10,8 @@ pub enum NetworkError {
     NodeNotFound(u8),
     NodeIsNotANeighbor(u8),
     SendError(String),
+    ControllerDisconnected,
+    NoDestination,
 }
 
 impl Display for NetworkError {
@@ -20,6 +22,8 @@ impl Display for NetworkError {
             Self::NodeNotFound(id) => write!(f, "Node {} not found", id),
             Self::NodeIsNotANeighbor(id) => write!(f, "Node {} is not a neighbor", id),
             Self::SendError(msg) => write!(f, "Send error: {}", msg),
+            Self::ControllerDisconnected => write!(f, "Controller disconnected"),
+            Self::NoDestination => write!(f, "Packet has no destination specified"),
         }
     }
 }
@@ -103,13 +107,12 @@ impl Network {
     }
 
     pub fn remove_node(&mut self, node_id: NodeId) {
-        if let Some(_) = self.nodes.iter().find(|n| n.get_id() == node_id) {
-            for n in self.nodes.iter_mut() {
-                if n.get_adjacents().contains(&node_id){
-                    n.remove_adjacent(node_id);
-                }
+        for n in self.nodes.iter_mut() {
+            if n.get_adjacents().contains(&node_id){
+                n.remove_adjacent(node_id);
             }
-            let index_to_remove = self.nodes.iter().position(|n| n.get_id() == node_id).expect(&format!("Node {} is not a node of the network", node_id));
+        }
+        if let Some(index_to_remove) = self.nodes.iter().position(|n| n.get_id() == node_id) {
             let _ = self.nodes.remove(index_to_remove);
         }
     }
