@@ -1,4 +1,4 @@
-name: Build, Clippy (Pedantic), Test, and Push
+name: Build, Clippy (Pedantic), Test
 
 on:
   push:
@@ -7,17 +7,17 @@ on:
   pull_request:
 
 jobs:
-  build-clippy-test-push:
+  build-clippy-test:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up Rust
-        uses: actions/setup-rust@v1
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@master
         with:
-          rust-version: stable
+          toolchain: stable
 
       - name: Build (fail on warnings)
         run: cargo build --verbose
@@ -29,10 +29,3 @@ jobs:
 
       - name: Run tests
         run: cargo test --verbose
-
-      - name: Push changes
-        if: ${{ success() && github.ref == 'refs/heads/main' }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git push origin main
