@@ -167,7 +167,7 @@ impl RoutingHandler {
 
         if !self.flood_seen.insert(flood_session) || self.neighbors.len() == 1 {
             // generate flood response
-            let route= if let Ok(path) = self.network_view.find_path(flood_request.initiator_id) {
+            let route= if let Some(path) = self.network_view.find_path(flood_request.initiator_id) {
                 SourceRoutingHeader::new(path, 1)
             } else {
                 let mut route: Vec<_> = flood_request.path_trace
@@ -263,7 +263,7 @@ impl RoutingHandler {
                 Ok(_) => {
                     packet_sent = true;
                 },
-                Err(NetworkError::SendError(t)) => {
+                Err(NetworkError::SendError(_t)) => {
                     // If the first hop is not a neighbor, remove it and try again
                     if let Some(first_hop) = packet.routing_header.hops.get(1) {
                         self.remove_neighbor(*first_hop);
