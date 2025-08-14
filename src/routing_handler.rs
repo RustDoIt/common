@@ -117,11 +117,15 @@ impl RoutingHandler {
         Ok(())
     }
 
+
+    /// Tries to remove the neighbor from the neighbors map and network view
     pub fn remove_neighbor(&mut self, node_id: NodeId) {
         let _ = self.neighbors.remove(&node_id);
         let _ = self.network_view.remove_node(node_id);
     }
 
+
+    /// Adds a new neighbor to the neighbors map and updates the network view
     pub fn add_neighbor(&mut self, node_id: NodeId, sender: Sender<Packet>) {
         let _ = self.neighbors.insert(node_id, sender);
         let _ = self.network_view.update_node(self.id,vec![node_id]);
@@ -209,18 +213,21 @@ impl RoutingHandler {
         Ok(())
     }
 
-    pub fn handle_nack(&mut self, nack: Nack, sender_id: NodeId) -> Result<(), NetworkError> {
+    pub fn handle_nack(&mut self, nack: Nack, session_id: u64, source_id: NodeId) -> Result<(), NetworkError> {
         match nack.nack_type {
             NackType::ErrorInRouting(id) => {
-                self.network_view.remove_node(id);
-
+                self.remove_neighbor(id);
                 self.start_flood()?;
+                if let Some(packet) = self.buffer.get_fragment_by_id(session_id, nack.fragment_index, source_id) {
+                    self.try_send(packet)?;
+                }
+
             },
             NackType::Dropped => {
-                self.network_view.remove_node(sender_id);
+                self.network_view.remove_node(source_id);
                 self.start_flood()?;
             },
-            NackType::DestinationIsDrone => self.network_view.change_node_type(sender_id, NodeType::Drone),
+            NackType::DestinationIsDrone => self.network_view.change_node_type(source_id, NodeType::Drone),
             _ => {}
         }
 
@@ -240,10 +247,11 @@ impl RoutingHandler {
         Ok(())
     }
 
-    fn try_send(&mut self, mut packet: Packet) -> Result<(), NetworkError> {
-        /// Tries to send a packet to next hop until it succeeds or there are no more neighbors.
-        /// If sending fails, it removes the first hop from the route and tries again.
 
+    /// Tries to send a packet to next hop until it succeeds or there are no more neighbors.
+    /// If sending fails, it removes the neighbor, finds a new route and tries again.
+    fn try_send(&mut self, mut packet: Packet) -> Result<(), NetworkError> {
+        // A packet must have a destination
         let destination = packet
             .routing_header
             .destination()
@@ -251,27 +259,44 @@ impl RoutingHandler {
 
         let mut packet_sent = false;
         while !packet_sent && self.neighbors.len() > 0 {
-            if let Ok(_) = self.send_packet_to_first_hop(packet.clone()) {
-                packet_sent = true;
-            } else {
-                // If sending failed, remove the neighbor and try again
-                if let Some(first_hop) = packet.routing_header.hops.get(1) {
-                    self.remove_neighbor(*first_hop);
-                    let route = self.network_view.find_path(destination)?;
-                    packet.routing_header = SourceRoutingHeader::new(route, 1).without_loops();
-                }
+            match self.send_packet_to_first_hop(packet.clone()) {
+                Ok(_) => {
+                    packet_sent = true;
+                },
+                Err(NetworkError::SendError(t)) => {
+                    // If the first hop is not a neighbor, remove it and try again
+                    if let Some(first_hop) = packet.routing_header.hops.get(1) {
+                        self.remove_neighbor(*first_hop);
+                        let route = self.network_view
+                            .find_path(destination)
+                            .ok_or(NetworkError::PathNotFound(destination))?;
+                        packet.routing_header = SourceRoutingHeader::new(route, 1).without_loops();
+                    }
+                },
+                Err(e) => return Err(e),
             }
+        }
+
+        if self.neighbors.is_empty() {
+            return Err(NetworkError::NoNeighborAssigned);
         }
 
         Ok(())
 
     }
 
+
+    /// Sends a message by fragmenting it into 128-byte chunks and sending each chunk as a separate packet.
     pub fn send_message(&mut self, message: &Vec<u8>, destination: NodeId) -> Result<(), NetworkError> {
         let chunks: Vec<&[u8]> = message.chunks(128).collect();
         let total_n_fragments = chunks.len();
 
         self.session_counter += 1;
+        let shr = SourceRoutingHeader::new(
+            self.network_view.find_path(destination).ok_or(NetworkError::PathNotFound(destination))?,
+            1,
+        ).without_loops();
+
         for (i, chunk) in chunks.into_iter().enumerate() {
             // Pad/truncate to exactly 128 bytes
             let mut arr = [0u8; 128];
@@ -283,12 +308,7 @@ impl RoutingHandler {
                 arr,
             );
 
-            let shr = SourceRoutingHeader::new(
-                self.network_view.find_path(destination)?,
-                1,
-            ).without_loops();
-
-            let packet = Packet::new_fragment(shr, self.session_counter, fragment);
+            let packet = Packet::new_fragment(shr.clone(), self.session_counter, fragment);
 
             self.try_send(packet.clone())?;
             self.buffer.insert(packet, self.session_counter, self.id);

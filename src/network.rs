@@ -12,6 +12,7 @@ pub enum NetworkError {
     SendError(String),
     ControllerDisconnected,
     NoDestination,
+    NoNeighborAssigned
 }
 
 impl Display for NetworkError {
@@ -24,6 +25,7 @@ impl Display for NetworkError {
             Self::SendError(msg) => write!(f, "Send error: {}", msg),
             Self::ControllerDisconnected => write!(f, "Controller disconnected"),
             Self::NoDestination => write!(f, "Packet has no destination specified"),
+            Self::NoNeighborAssigned => write!(f, "No neighbor assigned"),
         }
     }
 }
@@ -142,7 +144,7 @@ impl Network {
         }
     }
 
-    pub fn find_path(&self, destination: NodeId) -> Result<Vec<NodeId>, NetworkError> {
+    pub fn find_path(&self, destination: NodeId) -> Option<Vec<NodeId>> {
         let start = self.nodes[0].id;
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
@@ -160,7 +162,7 @@ impl Network {
                     current = parent;
                 }
                 path.reverse();
-                return Ok(path);
+                return Some(path);
             }
 
             if let Some(node) = self.nodes.iter().find(|n| n.get_id() == current) {
@@ -173,7 +175,7 @@ impl Network {
                 }
             }
         }
-        Err(NetworkError::PathNotFound(destination))
+        None
     }
 }
 
