@@ -1,47 +1,43 @@
+use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
 
 use wg_internal::{network::NodeId, packet::Fragment};
 
 
-#[derive(Debug)]
-pub struct FragmentAssembler {
-    pub fragments: HashMap<(u64, NodeId), Vec<Fragment>>, // session_id -> data buffer
+#[derive(Debug, Default)]
+pub struct FragmentAssembler<'a> {
+    pub fragments: HashMap<(u64, NodeId), Vec<&'a Fragment>>, // session_id -> data buffer
     pub expected_fragments: HashMap<(u64, NodeId), u64>, // session_id -> total_fragments
     pub received_fragments: HashMap<(u64, NodeId), Vec<bool>>, // session_id -> received status
 }
 
-impl FragmentAssembler {
-    pub fn new() -> Self {
-        Self {
-            fragments: HashMap::new(),
-            expected_fragments: HashMap::new(),
-            received_fragments: HashMap::new()
-        }
-    }
-
-    pub fn add_fragment(&mut self, fragment: Fragment, session_id: u64, sender: NodeId) -> Option<Vec<u8>> {
+impl<'a> FragmentAssembler<'a> {
+    pub fn add_fragment(&mut self, fragment: &'a Fragment, session_id: u64, sender: NodeId) -> Option<Vec<u8>> {
         let communication_id = ( session_id, sender );
-        if !self.fragments.contains_key(&communication_id) {
-            self.fragments.insert(communication_id, vec![fragment.clone()]);
+        #[allow(clippy::cast_possible_truncation)]
+        let index = fragment.fragment_index as usize;
+
+        if let Vacant(entry) = self.fragments.entry(communication_id) {
+            entry.insert(vec![fragment]);
             self.expected_fragments.insert(communication_id, fragment.total_n_fragments);
-            self.received_fragments.insert(communication_id, vec![false; fragment.total_n_fragments as usize]);
+            self.received_fragments.insert(communication_id, vec![false; index]);
         }
 
         {
-            let received = self.received_fragments.get_mut(&communication_id).unwrap();
-            received[fragment.fragment_index as usize] = true;
+            let received = self.received_fragments.get_mut(&communication_id)?;
+            received[index] = true;
         }
 
-        let expected = self.expected_fragments.get(&communication_id).unwrap();
-        let received = self.received_fragments.get(&communication_id).unwrap();
-        let fragments = self.fragments.get(&communication_id).unwrap();
+        let expected = self.expected_fragments.get(&communication_id)?;
+        let received = self.received_fragments.get(&communication_id)?;
+        let fragments = self.fragments.get(&communication_id)?;
 
         // check if all fragments has been received
         if fragments.len() as u64 == *expected && received.iter().all(|f| *f){
-            let fragments = self.fragments.get_mut(&communication_id).unwrap();
+            let fragments = self.fragments.get_mut(&communication_id)?;
             fragments.sort_by(|t, n| t.fragment_index.cmp(&n.fragment_index));
             let mut data = vec![];
-            for f in fragments.iter() {
+            for f in fragments {
                 data.copy_from_slice(&f.data);
             }
             let _ = self.fragments.remove(&communication_id);

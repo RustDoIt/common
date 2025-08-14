@@ -32,10 +32,10 @@ impl Buffer {
             .get(&id)?
             .iter()
             .filter_map(|(r, p)| {
-                if !r {
-                    Some(p.clone())
-                } else {
+                if *r {
                     None
+                } else {
+                    Some(p.clone())
                 }
             })
         .collect();
@@ -46,8 +46,10 @@ impl Buffer {
     fn mark_as_received(&mut self, session_id: u64, fragment_index: u64, form: NodeId) {
         let id = (session_id, form);
         if let Some(f) = self.packets_received.get_mut(&id) {
-            let ( _received, frag  )= &f[fragment_index as usize];
-            f[fragment_index as usize] = (true, frag.clone());
+            #[allow(clippy::cast_possible_truncation)]
+            let index = fragment_index as usize;
+            let ( _received, frag  )= &f[index];
+            f[index] = (true, frag.clone());
 
             if f.iter().all(|(r, _)| *r) {
                 // If all fragments are received, remove the session
@@ -59,7 +61,8 @@ impl Buffer {
     fn get_fragment_by_id(&mut self, session_id: u64, fragment_index: u64, from: NodeId) -> Option<Packet> {
         let id = (session_id, from);
         if let Some(session) = self.packets_received.get(&id) {
-            session.iter().nth(fragment_index as usize).map(|(r, p)| if !r { Some(p.clone()) } else { None })?
+            #[allow(clippy::cast_possible_truncation)]
+            session.get(fragment_index as usize).map(|(r, p)| if *r { None } else { Some(p.clone()) })?
         } else {
             None
         }
@@ -79,6 +82,8 @@ pub struct RoutingHandler {
 }
 
 impl RoutingHandler {
+
+    #[must_use]
     pub fn new(id: NodeId, node_type: NodeType, neighbors: HashMap<NodeId, Sender<Packet>>, controller_send: Sender<NodeEvent>) -> Self {
         Self {
             id,
@@ -92,6 +97,10 @@ impl RoutingHandler {
         }
     }
 
+
+    /// Sends a packet to a specific neighbor and notifies the controller about the packet sent.
+    /// # Errors
+    /// Returns an error if sending the packet to the neighbor fails or if sending the event to the controller fails.
     fn send(&self, neighbor: &Sender<Packet>, packet: Packet) -> Result<(), NetworkError> {
         neighbor.send(packet.clone())?;
         self.controller_send.send(NodeEvent::PacketSent(packet)).map_err(
@@ -100,6 +109,13 @@ impl RoutingHandler {
         Ok(())
     }
 
+
+    /// Starts a flood by incrementing the session and flood counters,
+    /// creating a flood request packet,
+    /// sending it to all neighbors,
+    /// and notifying the controller about the flood start.
+    /// # Errors
+    /// Returns an error if sending the packet to the controller fails or if sending to any neighbor fails.
     pub fn start_flood(&mut self) -> Result<(), NetworkError> {
         self.session_counter += 1;
         self.flood_counter += 1;
@@ -109,8 +125,8 @@ impl RoutingHandler {
             FloodRequest::new(self.flood_counter, self.id )
         );
         self.controller_send.send(NodeEvent::FloodStarted(self.flood_counter, self.id))?;
-        for (node_id, sender) in self.neighbors.clone().iter() {
-            if let Err(_) = sender.send(packet.clone()) {
+        for (node_id, sender) in &self.neighbors.clone() {
+            if sender.send(packet.clone()).is_err() {
                 self.remove_neighbor(*node_id);
             }
         }
@@ -120,8 +136,9 @@ impl RoutingHandler {
 
     /// Tries to remove the neighbor from the neighbors map and network view
     pub fn remove_neighbor(&mut self, node_id: NodeId) {
+        #[allow(clippy::let_unit_value)]
         let _ = self.neighbors.remove(&node_id);
-        let _ = self.network_view.remove_node(node_id);
+        self.network_view.remove_node(node_id);
     }
 
 
@@ -131,7 +148,7 @@ impl RoutingHandler {
         let _ = self.network_view.update_node(self.id,vec![node_id]);
     }
 
-    pub fn handle_flood_response(&mut self, flood_response: FloodResponse) {
+    pub fn handle_flood_response(&mut self, flood_response: &FloodResponse) {
         if flood_response.flood_id == self.flood_counter {
             for (i, &(node_id, node_type)) in flood_response.path_trace.iter().enumerate() {
                 let mut neighbors = Vec::new();
@@ -147,7 +164,7 @@ impl RoutingHandler {
                 }
 
                 // Try to update existing node or add new one
-                if let Err(_) = self.network_view.update_node(node_id, neighbors.clone()) {
+                if self.network_view.update_node(node_id, neighbors.clone()).is_err() {
                     let new_node = Node::new(node_id, node_type, neighbors.clone());
                     self.network_view.add_node(new_node);
                 }
@@ -155,11 +172,16 @@ impl RoutingHandler {
         }
     }
 
+
+    /// Handles a flood request by checking if the flood has been seen before.
+    /// If it has not been seen, it generates a flood response and sends it to the neighbors.
+    /// If it has been seen, it forwards the flood request to the neighbors except for the previous hop.
+    /// # Errors
+    /// Returns an error if sending the packet fails or if the flood request is malformed.
     pub fn handle_flood_request(&mut self, mut flood_request: FloodRequest, session_id: u64) -> Result<(), NetworkError> {
         let prev_hop = flood_request.path_trace
             .last()
-            .map(|x| x.0)
-            .unwrap_or(flood_request.initiator_id);
+            .map_or(flood_request.initiator_id, |x| x.0);
 
         flood_request.path_trace.push((self.id, NodeType::Drone));
 
@@ -205,7 +227,7 @@ impl RoutingHandler {
             flood_request,
         );
 
-        for (neighbor_id, neighbor) in self.neighbors.iter() {
+        for (neighbor_id, neighbor) in &self.neighbors {
             if *neighbor_id != prev_hop {
                 neighbor.send(new_flood_request.clone())?;
             }
@@ -213,7 +235,12 @@ impl RoutingHandler {
         Ok(())
     }
 
-    pub fn handle_nack(&mut self, nack: Nack, session_id: u64, source_id: NodeId) -> Result<(), NetworkError> {
+
+    /// Handles a NACK packet by removing the neighbor if the NACK indicates an error in routing,
+    /// starting a flood to find a new route, and retrying to send the packet if it exists in the buffer.
+    /// # Errors
+    /// Returns an error if sending the packet fails or if the packet is not found in the buffer.
+    pub fn handle_nack(&mut self, nack: &Nack, session_id: u64, source_id: NodeId) -> Result<(), NetworkError> {
         match nack.nack_type {
             NackType::ErrorInRouting(id) => {
                 self.remove_neighbor(id);
@@ -228,7 +255,8 @@ impl RoutingHandler {
                 self.start_flood()?;
             },
             NackType::DestinationIsDrone => self.network_view.change_node_type(source_id, NodeType::Drone),
-            _ => {}
+
+            NackType::UnexpectedRecipient(_) => todo!(),
         }
 
         Ok(())
@@ -250,6 +278,8 @@ impl RoutingHandler {
 
     /// Tries to send a packet to next hop until it succeeds or there are no more neighbors.
     /// If sending fails, it removes the neighbor, finds a new route and tries again.
+    /// # Errors
+    /// Returns an error if the packet has no destination, if there are no neighbors, or if sending fails.
     fn try_send(&mut self, mut packet: Packet) -> Result<(), NetworkError> {
         // A packet must have a destination
         let destination = packet
@@ -258,9 +288,9 @@ impl RoutingHandler {
             .ok_or(NetworkError::NoDestination)?;
 
         let mut packet_sent = false;
-        while !packet_sent && self.neighbors.len() > 0 {
+        while !packet_sent && !self.neighbors.is_empty() {
             match self.send_packet_to_first_hop(packet.clone()) {
-                Ok(_) => {
+                Ok(()) => {
                     packet_sent = true;
                 },
                 Err(NetworkError::SendError(_t)) => {
@@ -287,7 +317,9 @@ impl RoutingHandler {
 
 
     /// Sends a message by fragmenting it into 128-byte chunks and sending each chunk as a separate packet.
-    pub fn send_message(&mut self, message: &Vec<u8>, destination: NodeId) -> Result<(), NetworkError> {
+    /// # Errors
+    /// Returns an error if the destination path cannot be found or if sending fails.
+    pub fn send_message(&mut self, message: &[u8], destination: NodeId) -> Result<(), NetworkError> {
         let chunks: Vec<&[u8]> = message.chunks(128).collect();
         let total_n_fragments = chunks.len();
 
@@ -318,10 +350,15 @@ impl RoutingHandler {
     }
 
 
-    pub fn handle_ack(&mut self, ack: Ack, session_id: u64, from: NodeId) {
+    pub fn handle_ack(&mut self, ack: &Ack, session_id: u64, from: NodeId) {
         self.buffer.mark_as_received(session_id, ack.fragment_index, from);
     }
 
+
+    /// Retries sending all packets that have not been received for a given session and from a specific node.
+    /// If the packets are found in the buffer, they are sent again.
+    /// # Errors
+    /// Returns an error if sending fails.
     pub fn retry_send_all(&mut self, session_id: u64, from: NodeId) -> Result<(), NetworkError> {
         if let Some(packets) = self.buffer.get_not_received(session_id, from) {
             for packet in packets {
@@ -331,6 +368,11 @@ impl RoutingHandler {
         Ok(())
     }
 
+
+    /// Retries sending a specific packet identified by `session_id` and `fragment_index` from a specific node.
+    /// If the packet is found in the buffer, it is sent again.
+    /// # Errors
+    /// Returns an error if sending fails.
     pub fn retry_send(&mut self, session_id: u64, fragment_index: u64, from: NodeId) -> Result<(), NetworkError> {
         if let Some(packet) = self.buffer.get_fragment_by_id(session_id, fragment_index, from) {
             self.try_send(packet)?;
@@ -338,6 +380,10 @@ impl RoutingHandler {
         Ok(())
     }
 
+    /// Sends an acknowledgment packet for a specific session and fragment index.
+    /// The acknowledgment is sent to the source routing header (shr) provided.
+    /// # Errors
+    /// Returns an error if sending fails.
     pub fn send_ack(&mut self, shr: SourceRoutingHeader, session_id: u64, fragment_index: u64) -> Result<(), NetworkError> {
         let packet = Packet::new_ack(shr, session_id, fragment_index);
         self.try_send(packet)?;
@@ -405,10 +451,10 @@ mod tests {
             path_trace: vec![(2, NodeType::Drone), (3, NodeType::Client)],
         };
 
-        handler.handle_flood_response(flood_response);
+        handler.handle_flood_response(&flood_response);
 
-        assert!(handler.network_view.nodes.iter().any(|n| n.get_id() == 2));
-        assert!(handler.network_view.nodes.iter().any(|n| n.get_id() == 3));
+        assert!(handler.network_view.nodes.iter().any(|n| n.id == 2));
+        assert!(handler.network_view.nodes.iter().any(|n| n.id == 3));
     }
 
     #[test]
@@ -442,7 +488,7 @@ mod tests {
             fragment_index: 0,
         };
 
-        handler.handle_ack(ack, 1, 2);
+        handler.handle_ack(&ack, 1, 2);
 
         assert!(handler.buffer.get_not_received(1, 2).is_none());
     }

@@ -16,6 +16,7 @@ pub enum NodeCommand {
 }
 
 impl NodeCommand {
+    #[must_use]
     pub fn as_add_sender(self) -> Option<(NodeId, Sender<Packet>)> {
         match self {
             NodeCommand::AddSender(id, sender) => Some((id, sender)),
@@ -23,6 +24,7 @@ impl NodeCommand {
         }
     }
 
+    #[must_use]
     pub fn is_add_sender(&self) -> bool {
         matches!(self, Self::AddSender(_, _))
     }
