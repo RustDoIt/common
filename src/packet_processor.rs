@@ -2,7 +2,7 @@ use crate::{network::NetworkError, FragmentAssembler, RoutingHandler};
 use std::any::Any;
 
 use crossbeam_channel::{select_biased, Receiver};
-use wg_internal::packet::{Packet, PacketType};
+use wg_internal::{network::NodeId, packet::{Packet, PacketType}};
 
 pub trait Processor {
     fn controller_recv(&self) -> &Receiver<Box<dyn Any>>;
@@ -10,7 +10,7 @@ pub trait Processor {
     fn assembler(&mut self) -> &mut FragmentAssembler;
     fn routing_header(&mut self) -> &mut RoutingHandler;
 
-    fn handle_msg(&mut self, msg: Vec<u8>);
+    fn handle_msg(&mut self, msg: Vec<u8>, from: NodeId, session_id: u64);
     fn handle_command(&mut self, cmd: Box<dyn Any>);
 
     /// Handles a packet in a standard way
@@ -25,7 +25,7 @@ pub trait Processor {
                     pkt.session_id,
                     pkt.routing_header.hops[0],
                 ) {
-                    self.handle_msg(msg);
+                    self.handle_msg(msg, pkt.routing_header.hops[0], pkt.session_id);
                 }
             }
             PacketType::Ack(ack) => {
