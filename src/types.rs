@@ -85,5 +85,5 @@ pub enum ClientType {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ServerType {
     ChatServer,
-    WebServer,
+    MediaServer,
 }
