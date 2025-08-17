@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 use wg_internal::{network::NodeId, packet::Packet};
 use crossbeam_channel::Sender;
@@ -40,9 +42,29 @@ pub enum ChatResponse {
     RegistrationSuccess,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Message {
+    from: NodeId,
+    to: NodeId,
+    text: String,
+}
 
-pub enum ChatClientCommand {
-    NodeCommand(NodeCommand)
+impl Message {
+    pub fn new(from: NodeId, to: NodeId, text: String) -> Self {
+        Message { from, to, text }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ChatCommand {
+    GetChatsHistories,
+    GetConnectedClients,
+}
+
+#[derive(Debug, Clone)]
+pub enum ChatEvent {
+    ClientHistory(HashMap<NodeId, Vec<Message>>),
+    ConnectedClients(Vec<NodeId>),
 }
 
 

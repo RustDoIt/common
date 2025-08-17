@@ -11,7 +11,7 @@ pub trait Processor {
     fn routing_header(&mut self) -> &mut RoutingHandler;
 
     fn handle_msg(&mut self, msg: Vec<u8>, from: NodeId, session_id: u64);
-    fn handle_command(&mut self, cmd: Box<dyn Any>);
+    fn handle_command(&mut self, cmd: Box<dyn Any>) -> Result<(), ()>;
 
     /// Handles a packet in a standard way
     /// # Errors
@@ -20,11 +20,15 @@ pub trait Processor {
         let router = self.routing_header();
         match pkt.pack_type {
             PacketType::MsgFragment(fragment) => {
+                let idx = fragment.fragment_index;
                 if let Some(msg) = self.assembler().add_fragment(
                     fragment,
                     pkt.session_id,
                     pkt.routing_header.hops[0],
                 ) {
+                    let mut shr = pkt.routing_header.clone();
+                    shr.reverse();
+                    self.routing_header().send_ack(shr, pkt.session_id, idx)?;
                     self.handle_msg(msg, pkt.routing_header.hops[0], pkt.session_id);
                 }
             }
@@ -49,15 +53,16 @@ pub trait Processor {
             select_biased! {
                 recv(self.controller_recv()) -> cmd => {
                     if let Ok(cmd) = cmd {
-                        self.handle_command(cmd);
+                        if self.handle_command(cmd).is_err() {
+                            return
+                        }
                     }
                 }
 
                 recv(self.packet_recv()) -> pkt => {
                     if let Ok(pkt) = pkt {
-                        match self.handle_packet(pkt) {
-                            Ok(()) => {},
-                            Err(_) => return
+                        if self.handle_packet(pkt).is_err() {
+                            return
                         }
                     }
                 }
