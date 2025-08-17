@@ -1,12 +1,21 @@
 use wg_internal::{network::NodeId, packet::Packet};
 use crossbeam_channel::Sender;
 
+pub type Bytes = Vec<u8>;
+
+
+pub enum ChatClientCommand {
+    NodeCommand(NodeCommand)
+}
+
+
 #[derive(Debug, Clone)]
 pub enum NodeEvent {
     PacketSent(Packet),
     FloodStarted(u64, NodeId),
     NodeRemoved(NodeId)
 }
+
 
 #[derive(Debug, Clone)]
 pub enum NodeCommand {
@@ -28,4 +37,16 @@ impl NodeCommand {
     pub fn is_add_sender(&self) -> bool {
         matches!(self, Self::AddSender(_, _))
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClientType {
+    ChatClient,
+    WebBrowser,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ServerType {
+    ChatServer,
+    WebServer,
 }

@@ -5,22 +5,22 @@ use wg_internal::{network::NodeId, packet::Fragment};
 
 
 #[derive(Debug, Default)]
-pub struct FragmentAssembler<'a> {
-    pub fragments: HashMap<(u64, NodeId), Vec<&'a Fragment>>, // session_id -> data buffer
+pub struct FragmentAssembler {
+    pub fragments: HashMap<(u64, NodeId), Vec<Fragment>>, // session_id -> data buffer
     pub expected_fragments: HashMap<(u64, NodeId), u64>, // session_id -> total_fragments
     pub received_fragments: HashMap<(u64, NodeId), Vec<bool>>, // session_id -> received status
 }
 
-impl<'a> FragmentAssembler<'a> {
-    pub fn add_fragment(&mut self, fragment: &'a Fragment, session_id: u64, sender: NodeId) -> Option<Vec<u8>> {
+impl FragmentAssembler {
+    pub fn add_fragment(&mut self, fragment: Fragment, session_id: u64, sender: NodeId) -> Option<Vec<u8>> {
         let communication_id = ( session_id, sender );
         #[allow(clippy::cast_possible_truncation)]
         let index = fragment.fragment_index as usize;
 
         if let Vacant(entry) = self.fragments.entry(communication_id) {
-            entry.insert(vec![fragment]);
             self.expected_fragments.insert(communication_id, fragment.total_n_fragments);
             self.received_fragments.insert(communication_id, vec![false; index]);
+            entry.insert(vec![fragment]);
         }
 
         {
