@@ -44,9 +44,9 @@ pub enum ChatResponse {
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Message {
-    from: NodeId,
-    to: NodeId,
-    text: String,
+    pub from: NodeId,
+    pub to: NodeId,
+    pub text: String,
 }
 
 impl Message {
@@ -59,12 +59,15 @@ impl Message {
 pub enum ChatCommand {
     GetChatsHistories,
     GetConnectedClients,
+    SendMessage(Message)
 }
 
 #[derive(Debug, Clone)]
 pub enum ChatEvent {
     ClientHistory(HashMap<NodeId, Vec<Message>>),
     ConnectedClients(Vec<NodeId>),
+    MessageSent,
+    MessageReceived(Message)
 }
 
 
