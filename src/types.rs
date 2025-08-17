@@ -24,10 +24,10 @@ pub enum ChatRequest {
 #[serde(tag = "response_type")]
 pub enum ChatResponse {
     #[serde(rename = "server_type!")]
-    ServerTypeResponse { server_type: String },
+    ServerType { server_id: NodeId, server_type: ServerType },
 
     #[serde(rename = "client_list!")]
-    ClientListResponse { list_of_client_ids: Vec<NodeId> },
+    ClientList { list_of_client_ids: Vec<NodeId> },
 
     #[serde(rename = "message_from!")]
     MessageFrom { client_id: NodeId, message: String },
@@ -82,7 +82,7 @@ pub enum ClientType {
     WebBrowser,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ServerType {
     ChatServer,
     MediaServer,
