@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 pub type Bytes = Vec<u8>;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq)]
 pub struct MediaReference {
     location: NodeId,
     pub id: Uuid
@@ -32,10 +32,18 @@ impl MediaReference {
 }
 
 impl Display for MediaReference {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}/{}", self.location, self.id.to_string())
     }
 }
+
+impl PartialEq for MediaReference {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+
 
 impl FromStr for MediaReference {
     type Err = anyhow::Error;
@@ -52,16 +60,22 @@ impl FromStr for MediaReference {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TextFile<'a>{
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq)]
+pub struct TextFile{
     id: Uuid,
     title: String,
-    content: &'a str,
+    content: String,
     media_refs: Option<Vec<MediaReference>>
 }
 
-impl<'a> TextFile<'a> {
-    pub fn new(title: String, content: &'a str, media_refs: Option<Vec<MediaReference>>) -> Self {
+impl PartialEq for TextFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl TextFile {
+    pub fn new(title: String, content: String, media_refs: Option<Vec<MediaReference>>) -> Self {
         Self {
             title,
             id: Uuid::new_v4(),
@@ -70,16 +84,27 @@ impl<'a> TextFile<'a> {
         }
     }
 
-    pub fn get_refs(&self) -> Option<Vec<MediaReference>> {
-        self.media_refs.clone()
+    pub fn get_refs(&self) -> Vec<MediaReference> {
+        if let Some(vec) = &self.media_refs {
+            return vec.to_vec()
+        } else {
+            vec![]
+        }
     }
 }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MediaFile {
     id: Uuid,
     title: String,
     content: Vec<Bytes>,
+}
+
+impl PartialEq for MediaFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
 }
 
 
@@ -103,16 +128,16 @@ pub enum WebRequest {
 #[serde(tag = "response_type")]
 pub enum WebResponse {
     #[serde(rename = "server_type!")]
-    ServerTypeResponse { server_type: String },
+    ServerType { server_type: ServerType },
 
     #[serde(rename = "files_list!")]
-    TextFilesListResponse { files: Vec<String> },
+    TextFilesList { files: Vec<String> },
 
     #[serde(rename = "file!")]
-    FileResponse { file_size: usize, file_data: Vec<u8> },
+    TextFile { file_data: Vec<u8> },
 
     #[serde(rename = "media!")]
-    MediaResponse { media_data: Vec<u8> },
+    MediaFile { media_data: Vec<u8> },
 
     #[serde(rename = "error_requested_not_found!")]
     ErrorNotFound,
@@ -141,7 +166,7 @@ pub enum ChatRequest {
 #[serde(tag = "response_type")]
 pub enum ChatResponse {
     #[serde(rename = "server_type!")]
-    ServerType { server_id: NodeId, server_type: ServerType },
+    ServerType { server_type: ServerType },
 
     #[serde(rename = "client_list!")]
     ClientList { list_of_client_ids: Vec<NodeId> },
@@ -226,5 +251,6 @@ pub enum ClientType {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum ServerType {
     ChatServer,
+    TextServer,
     MediaServer,
 }
