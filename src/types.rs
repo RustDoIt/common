@@ -57,15 +57,15 @@ impl Message {
 
 #[derive(Debug, Clone)]
 pub enum ChatCommand {
-    GetChatsHistories,
-    GetConnectedClients,
+    GetChatsHistory,
+    GetRegisteredClients,
     SendMessage(Message)
 }
 
 #[derive(Debug, Clone)]
 pub enum ChatEvent {
-    ClientHistory(HashMap<NodeId, Vec<Message>>),
-    ConnectedClients(Vec<NodeId>),
+    ChatHistory(HashMap<NodeId, Vec<Message>>),
+    RegisteredClients(Vec<NodeId>),
     MessageSent,
     MessageReceived(Message)
 }
