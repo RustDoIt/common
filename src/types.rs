@@ -50,6 +50,7 @@ pub struct Message {
 }
 
 impl Message {
+    #[must_use]
     pub fn new(from: NodeId, to: NodeId, text: String) -> Self {
         Message { from, to, text }
     }

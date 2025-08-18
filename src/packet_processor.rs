@@ -11,7 +11,7 @@ pub trait Processor {
     fn routing_header(&mut self) -> &mut RoutingHandler;
 
     fn handle_msg(&mut self, msg: Vec<u8>, from: NodeId, session_id: u64);
-    fn handle_command(&mut self, cmd: Box<dyn Any>) -> Result<(), ()>;
+    fn handle_command(&mut self, cmd: Box<dyn Any>) -> bool;
 
     /// Handles a packet in a standard way
     /// # Errors
@@ -53,7 +53,7 @@ pub trait Processor {
             select_biased! {
                 recv(self.controller_recv()) -> cmd => {
                     if let Ok(cmd) = cmd {
-                        if self.handle_command(cmd).is_err() {
+                        if self.handle_command(cmd) {
                             return
                         }
                     }

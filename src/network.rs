@@ -148,6 +148,8 @@ impl Network {
         }
     }
 
+
+    /// BFS to find path to destination
     #[must_use]
     pub(crate) fn find_path(&self, destination: NodeId) -> Option<Vec<NodeId>> {
         let start = self.nodes[0].id;
@@ -181,6 +183,24 @@ impl Network {
             }
         }
         None
+    }
+
+    #[must_use]
+    pub(crate) fn get_servers(&self) -> Option<Vec<NodeId>> {
+        let servers = self.nodes.iter().filter_map(|n| {
+            if n.get_node_type() == NodeType::Server {
+                Some(n.get_id())
+            }
+            else {
+                None
+            }
+        }).collect::<Vec<_>>();
+
+        if servers.is_empty() {
+            None
+        }else {
+            Some(servers)
+        }
     }
 }
 

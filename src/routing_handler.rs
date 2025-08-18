@@ -416,6 +416,11 @@ impl RoutingHandler {
         self.try_send(packet)?;
         Ok(())
     }
+
+    #[must_use]
+    pub fn get_servers(&self) -> Option<Vec<NodeId>> {
+        self.network_view.get_servers()
+    }
 }
 
 #[cfg(test)]
