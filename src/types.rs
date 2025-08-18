@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 pub type Bytes = Vec<u8>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct MediaReference {
     location: NodeId,
     pub id: Uuid
@@ -38,14 +38,6 @@ impl Display for MediaReference {
     }
 }
 
-impl PartialEq for MediaReference {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-
-
-
 impl FromStr for MediaReference {
     type Err = anyhow::Error;
 
@@ -61,23 +53,18 @@ impl FromStr for MediaReference {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct TextFile{
-    id: Uuid,
+    pub id: Uuid,
     title: String,
     content: String,
-    media_refs: Option<Vec<MediaReference>>
+    media_refs: Vec<MediaReference>
 }
 
-impl PartialEq for TextFile {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
 
 impl TextFile {
     #[must_use]
-    pub fn new(title: String, content: String, media_refs: Option<Vec<MediaReference>>) -> Self {
+    pub fn new(title: String, content: String, media_refs: Vec<MediaReference>) -> Self {
         Self {
             title,
             id: Uuid::new_v4(),
@@ -88,25 +75,41 @@ impl TextFile {
 
     #[must_use]
     pub fn get_refs(&self) -> Vec<MediaReference> {
-        if let Some(vec) = &self.media_refs {
-            return vec.clone()
-        }
-        vec![]
+        self.media_refs.clone()
+    }
 
+
+    #[must_use]
+    pub fn get_media_ids(&self) -> Vec<Uuid> {
+        self.media_refs.iter().map(|m| m.id).collect()
     }
 }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct MediaFile {
-    id: Uuid,
+    pub id: Uuid,
     title: String,
     content: Vec<Bytes>,
 }
 
-impl PartialEq for MediaFile {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+
+#[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+pub struct File {
+    pub id: Uuid,
+    pub text_file: TextFile,
+    media_files: Vec<MediaFile>
+}
+
+
+impl File {
+    #[must_use]
+    pub fn new(text_file: TextFile, media_files: Vec<MediaFile>) -> Self {
+        Self {
+            id: text_file.id,
+            text_file,
+            media_files
+        }
     }
 }
 
@@ -143,10 +146,7 @@ pub enum WebResponse {
     MediaFile { media_data: Vec<u8> },
 
     #[serde(rename = "error_requested_not_found!")]
-    ErrorNotFound,
-
-    #[serde(rename = "error_unsupported_request!")]
-    ErrorUnsupportedRequest,
+    ErrorFileNotFound(Uuid),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -212,6 +212,28 @@ pub enum ChatEvent {
     RegisteredClients(Vec<NodeId>),
     MessageSent,
     MessageReceived(Message)
+}
+
+
+#[derive(Debug, Clone)]
+pub enum WebCommand {
+    GetCachedFiles,
+    GetFile(Uuid),
+    GetTextFiles,
+    GetTextFile(Uuid),
+    GetMediaFiles,
+    GetMediaFile(Uuid),
+}
+
+#[derive(Debug, Clone)]
+pub enum WebEvent {
+    CachedFiles(Vec<File>),
+    File(File),
+    TextFiles(Vec<TextFile>),
+    TextFile(TextFile),
+    MediaFiles(Vec<MediaFile>),
+    MediaFile(MediaFile),
+    FileNotFound(Uuid),
 }
 
 
