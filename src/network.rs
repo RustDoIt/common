@@ -186,7 +186,7 @@ impl Network {
     }
 
     #[must_use]
-    pub(crate) fn get_servers(&self) -> Option<Vec<NodeId>> {
+    pub fn get_servers(&self) -> Option<Vec<NodeId>> {
         let servers = self.nodes.iter().filter_map(|n| {
             if n.get_node_type() == NodeType::Server {
                 Some(n.get_id())
@@ -201,6 +201,26 @@ impl Network {
         }else {
             Some(servers)
         }
+    }
+
+
+    #[must_use]
+    pub fn get_clients(&self) -> Option<Vec<NodeId>> {
+        let clients = self.nodes.iter().filter_map(|n| {
+            if n.get_node_type() == NodeType::Client {
+                Some(n.get_id())
+            }
+            else {
+                None
+            }
+        }).collect::<Vec<_>>();
+
+        if clients.is_empty() {
+            None
+        }else {
+            Some(clients)
+        }
+
     }
 }
 

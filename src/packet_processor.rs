@@ -8,7 +8,7 @@ pub trait Processor {
     fn controller_recv(&self) -> &Receiver<Box<dyn Any>>;
     fn packet_recv(&self) -> &Receiver<Packet>;
     fn assembler(&mut self) -> &mut FragmentAssembler;
-    fn routing_header(&mut self) -> &mut RoutingHandler;
+    fn routing_handler(&mut self) -> &mut RoutingHandler;
 
     fn handle_msg(&mut self, msg: Vec<u8>, from: NodeId, session_id: u64);
     fn handle_command(&mut self, cmd: Box<dyn Any>) -> bool;
@@ -17,7 +17,7 @@ pub trait Processor {
     /// # Errors
     /// returns an Errors if handling fails
     fn handle_packet(&mut self, pkt: Packet) -> Result<(), NetworkError> {
-        let router = self.routing_header();
+        let router = self.routing_handler();
         match pkt.pack_type {
             PacketType::MsgFragment(fragment) => {
                 let idx = fragment.fragment_index;
@@ -28,7 +28,7 @@ pub trait Processor {
                 ) {
                     let mut shr = pkt.routing_header.clone();
                     shr.reverse();
-                    self.routing_header().send_ack(shr, pkt.session_id, idx)?;
+                    self.routing_handler().send_ack(shr, pkt.session_id, idx)?;
                     self.handle_msg(msg, pkt.routing_header.hops[0], pkt.session_id);
                 }
             }
