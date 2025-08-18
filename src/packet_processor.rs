@@ -22,7 +22,7 @@ pub trait Processor {
             PacketType::MsgFragment(fragment) => {
                 let idx = fragment.fragment_index;
                 let mut shr = pkt.routing_header.clone();
-                shr.reverse();
+                    shr.reverse();
                 self.routing_handler().send_ack(shr, pkt.session_id, idx)?;
                 if let Some(msg) = self.assembler().add_fragment(
                     fragment,

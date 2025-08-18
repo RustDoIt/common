@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 pub type Bytes = Vec<u8>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub struct MediaReference {
     location: NodeId,
     pub id: Uuid
@@ -26,6 +26,7 @@ impl MediaReference {
         }
     }
 
+    #[must_use]
     pub fn get_location(&self) -> NodeId {
         self.location
     }
@@ -33,7 +34,7 @@ impl MediaReference {
 
 impl Display for MediaReference {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}/{}", self.location, self.id.to_string())
+        write!(f, "{}/{}", self.location, self.id)
     }
 }
 
@@ -60,7 +61,7 @@ impl FromStr for MediaReference {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Hash, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq)]
 pub struct TextFile{
     id: Uuid,
     title: String,
@@ -75,6 +76,7 @@ impl PartialEq for TextFile {
 }
 
 impl TextFile {
+    #[must_use]
     pub fn new(title: String, content: String, media_refs: Option<Vec<MediaReference>>) -> Self {
         Self {
             title,
@@ -84,12 +86,13 @@ impl TextFile {
         }
     }
 
+    #[must_use]
     pub fn get_refs(&self) -> Vec<MediaReference> {
         if let Some(vec) = &self.media_refs {
-            return vec.to_vec()
-        } else {
-            vec![]
+            return vec.clone()
         }
+        vec![]
+
     }
 }
 

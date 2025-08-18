@@ -1,3 +1,4 @@
+#![allow(clippy::collapsible_if)]
 pub mod network;
 pub mod types;
 pub mod assembler;
