@@ -86,16 +86,26 @@ impl TextFile {
 pub struct MediaFile {
     pub id: Uuid,
     pub title: String,
-    content: Vec<Bytes>,
+    pub content: Vec<Bytes>,
 }
 
 impl MediaFile {
-    pub fn new(title: String, content: Vec<Bytes>) -> Self {
+    pub(crate) fn new(title: String, content: Vec<Bytes>) -> Self {
         Self {
             id: Uuid::new_v4(),
             title,
             content,
         }
+    }
+
+    pub fn from_u8(filename: String, data: Vec<u8>) -> Self {
+        let chunk_size = 1024;
+        let content: Vec<Bytes> = data
+            .chunks(chunk_size)
+            .map(|chunk| chunk.to_vec())
+            .collect();
+
+        Self::new(filename, content)
     }
 
     pub fn get_title(&self) -> &str {
@@ -304,4 +314,33 @@ pub enum ServerType {
     ChatServer,
     TextServer,
     MediaServer,
+}
+
+pub mod file_conversion {
+    use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    pub fn file_to_media_file(file_path: &str) -> Result<MediaFile, Box<dyn std::error::Error>> {
+        let filename = Path::new(file_path)
+            .file_name()
+            .and_then(|name| name.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let data = fs::read(file_path.to_string())?;
+        Ok(MediaFile::from_u8(filename, data))
+    }
+
+    pub fn file_to_text_file(file_path: &str) -> Result<TextFile, Box<dyn std::error::Error>> {
+        let filename = Path::new(file_path)
+            .file_stem()
+            .and_then(|name| name.to_str())
+            .unwrap_or("unknown")
+            .to_string();
+
+        let content = fs::read_to_string(file_path.to_string())?;
+
+        Ok(TextFile::new(filename, content, vec![]))
+    }
 }
