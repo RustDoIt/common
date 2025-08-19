@@ -1,14 +1,10 @@
 use std::{collections::HashMap, str::FromStr};
 use std::fmt::Display;
-
-
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 use wg_internal::{network::NodeId, packet::Packet};
 use crossbeam_channel::Sender;
 use uuid::Uuid;
-
-
 pub type Bytes = Vec<u8>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
@@ -56,9 +52,9 @@ impl FromStr for MediaReference {
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct TextFile{
     pub id: Uuid,
-    title: String,
-    content: String,
-    media_refs: Vec<MediaReference>
+    pub title: String,
+    pub content: String,
+    pub media_refs: Vec<MediaReference>
 }
 
 
@@ -89,10 +85,31 @@ impl TextFile {
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct MediaFile {
     pub id: Uuid,
-    title: String,
+    pub title: String,
     content: Vec<Bytes>,
 }
 
+impl MediaFile {
+    pub fn new(title: String, content: Vec<Bytes>) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            title,
+            content,
+        }
+    }
+
+    pub fn get_title(&self) -> &str {
+        &self.title
+    }
+
+    pub fn get_content(&self) -> &Vec<Bytes> {
+        &self.content
+    }
+
+    pub fn get_size(&self) -> usize {
+        self.content.iter().map(|chunk| chunk.len()).sum()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct File {
@@ -214,7 +231,6 @@ pub enum ChatEvent {
     MessageReceived(Message)
 }
 
-
 #[derive(Debug, Clone)]
 pub enum WebCommand {
     GetCachedFiles,
@@ -223,6 +239,12 @@ pub enum WebCommand {
     GetTextFile(Uuid),
     GetMediaFiles,
     GetMediaFile(Uuid),
+    AddTextFile(TextFile),
+    AddTextFileFromPath(String),
+    AddMediaFile(MediaFile),
+    AddMediaFileFromPath(String),
+    RemoveTextFile(Uuid),
+    RemoveMediaFile(Uuid),
 }
 
 #[derive(Debug, Clone)]
@@ -234,6 +256,11 @@ pub enum WebEvent {
     MediaFiles(Vec<MediaFile>),
     MediaFile(MediaFile),
     FileNotFound(Uuid),
+    TextFileAdded(Uuid),
+    MediaFileAdded(Uuid),
+    TextFileRemoved(Uuid),
+    MediaFileRemoved(Uuid),
+    FileOperationError(String),
 }
 
 
@@ -243,7 +270,6 @@ pub enum NodeEvent {
     FloodStarted(u64, NodeId),
     NodeRemoved(NodeId)
 }
-
 
 #[derive(Debug, Clone)]
 pub enum NodeCommand {
