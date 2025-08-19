@@ -90,7 +90,7 @@ pub struct MediaFile {
 }
 
 impl MediaFile {
-    pub(crate) fn new(title: String, content: Vec<Bytes>) -> Self {
+    pub fn new(title: String, content: Vec<Bytes>) -> Self {
         Self {
             id: Uuid::new_v4(),
             title,
