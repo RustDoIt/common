@@ -90,6 +90,7 @@ pub struct MediaFile {
 }
 
 impl MediaFile {
+    #[must_use]
     pub fn new(title: String, content: Vec<Bytes>) -> Self {
         Self {
             id: Uuid::new_v4(),
@@ -98,26 +99,30 @@ impl MediaFile {
         }
     }
 
-    pub fn from_u8(filename: String, data: Vec<u8>) -> Self {
+    #[must_use]
+    pub fn from_u8(filename: String, data: &[u8]) -> Self {
         let chunk_size = 1024;
         let content: Vec<Bytes> = data
             .chunks(chunk_size)
-            .map(|chunk| chunk.to_vec())
+            .map(<[u8]>::to_vec)
             .collect();
 
         Self::new(filename, content)
     }
 
+    #[must_use]
     pub fn get_title(&self) -> &str {
         &self.title
     }
 
+    #[must_use]
     pub fn get_content(&self) -> &Vec<Bytes> {
         &self.content
     }
 
+    #[must_use]
     pub fn get_size(&self) -> usize {
-        self.content.iter().map(|chunk| chunk.len()).sum()
+        self.content.iter().map(Vec::len).sum()
     }
 }
 
@@ -317,10 +322,16 @@ pub enum ServerType {
 }
 
 pub mod file_conversion {
-    use super::*;
+    use super::{MediaFile, TextFile};
     use std::fs;
     use std::path::Path;
 
+    /// Converts a file path into a `MediaFile`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read, parsed, or converted
+    /// into a `MediaFile`.
     pub fn file_to_media_file(file_path: &str) -> Result<MediaFile, Box<dyn std::error::Error>> {
         let filename = Path::new(file_path)
             .file_name()
@@ -328,10 +339,16 @@ pub mod file_conversion {
             .unwrap_or("unknown")
             .to_string();
 
-        let data = fs::read(file_path.to_string())?;
-        Ok(MediaFile::from_u8(filename, data))
+        let data = fs::read(file_path)?;
+        Ok(MediaFile::from_u8(filename, &data))
     }
 
+    /// Converts a file path into a `TextFile`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the file cannot be read, parsed, or converted
+    /// into a `TextFile`.
     pub fn file_to_text_file(file_path: &str) -> Result<TextFile, Box<dyn std::error::Error>> {
         let filename = Path::new(file_path)
             .file_stem()
@@ -339,7 +356,7 @@ pub mod file_conversion {
             .unwrap_or("unknown")
             .to_string();
 
-        let content = fs::read_to_string(file_path.to_string())?;
+        let content = fs::read_to_string(file_path)?;
 
         Ok(TextFile::new(filename, content, vec![]))
     }

@@ -480,7 +480,7 @@ mod routing_handler_tests {
     }
 
     #[test]
-    /// Tests handling a FloodResponse
+    /// Tests handling a `FloodResponse`
     fn test_handle_flood_response() {
         let (sender, _receiver) = unbounded();
         let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
@@ -513,7 +513,7 @@ mod routing_handler_tests {
     }
 
     #[test]
-    /// Tests handling an Ack
+    /// Tests handling an `Ack`
     fn test_handle_ack() {
         let (sender, _receiver) = unbounded();
         let mut handler = RoutingHandler::new(1, NodeType::Client, HashMap::new(), sender);
@@ -541,7 +541,7 @@ mod routing_handler_tests {
     }
 
     #[test]
-    /// Tests the network_view update functionality after receiving a FloodResponse
+    /// Tests the `network_view` update functionality after receiving a `FloodResponse`
     fn test_flood_response_network_update() {
         let (mut handler, _) = create_test_routing_handler();
         handler.flood_counter = 5;
@@ -562,7 +562,7 @@ mod routing_handler_tests {
     }
 
     #[test]
-    /// Tests ErrorInRouting Nack handling
+    /// Tests `ErrorInRouting` Nack handling
     fn test_nack_handling_error_recovery() {
         let (mut handler, _) = create_test_routing_handler();
 
@@ -592,7 +592,7 @@ mod routing_handler_tests {
     }
 
     #[test]
-    /// Tests retry_send
+    /// Tests `retry_send`
     fn test_retry_send_mechanism() {
         let (mut handler, _) = create_test_routing_handler();
 
