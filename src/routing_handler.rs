@@ -286,6 +286,22 @@ impl RoutingHandler {
         Ok(())
     }
 
+    fn try_find_path(&mut self, destination: NodeId) -> Result<SourceRoutingHeader, NetworkError> {
+        if destination == self.id {
+            return Ok(SourceRoutingHeader::empty_route());
+        }
+        let tries: u8 = 4;
+        for _ in 0..tries {
+            if let Some(path) = self.network_view.find_path(destination) {
+                return Ok(SourceRoutingHeader::new(path, 1).without_loops());
+            }
+            self.start_flood()?;
+            // sleep for a short time to allow the flood to propagate
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        Err(NetworkError::PathNotFound(destination))
+    }
+
     /// Tries to send a packet to next hop until it succeeds or there are no more neighbors.
     /// If sending fails, it removes the neighbor, finds a new route and tries again.
     /// # Errors
@@ -308,11 +324,7 @@ impl RoutingHandler {
                     if let Some(first_hop) = packet.routing_header.hops.get(1) {
                         self.remove_neighbor(*first_hop);
                         // remove neighbor and start flood
-                        let route = self
-                            .network_view
-                            .find_path(destination)
-                            .ok_or(NetworkError::PathNotFound(destination))?;
-                        packet.routing_header = SourceRoutingHeader::new(route, 1).without_loops();
+                        packet.routing_header = self.try_find_path(destination)?;
 
                     }
                 }
@@ -342,13 +354,8 @@ impl RoutingHandler {
         if session_id.is_none() {
             self.session_counter += 1;
         }
-        let shr = SourceRoutingHeader::new(
-            self.network_view
-                .find_path(destination)
-                .ok_or(NetworkError::PathNotFound(destination))?,
-            1,
-        )
-        .without_loops();
+
+        let shr = self.try_find_path(destination)?;
 
         for (i, chunk) in chunks.into_iter().enumerate() {
             // Pad/truncate to exactly 128 bytes

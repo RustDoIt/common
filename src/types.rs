@@ -83,6 +83,7 @@ impl TextFile {
 
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
+
 pub struct MediaFile {
     pub id: Uuid,
     pub title: String,
@@ -253,7 +254,7 @@ pub enum WebCommand {
     GetTextFiles,
     GetTextFile(Uuid),
     GetMediaFiles,
-    GetMediaFile(Uuid),
+    GetMediaFile { media_id: Uuid, location: NodeId },
     AddTextFile(TextFile),
     AddTextFileFromPath(String),
     AddMediaFile(MediaFile),
