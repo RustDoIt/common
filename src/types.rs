@@ -163,6 +163,17 @@ pub enum WebRequest {
     MediaQuery { media_id: String },
 }
 
+impl WebRequest {
+    #[must_use]
+    pub fn get_file_id(&self) -> Option<String> {
+        match self {
+            Self::FileQuery { file_id} => Some(file_id.clone()),
+            Self::MediaQuery { media_id } => Some(media_id.clone()),
+            _ => None
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "response_type")]
 pub enum WebResponse {
