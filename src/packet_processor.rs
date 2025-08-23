@@ -42,7 +42,7 @@ pub trait Processor {
                 router.handle_flood_request(flood_request, pkt.session_id)?;
             }
             PacketType::FloodResponse(flood_response) => {
-                router.handle_flood_response(&flood_response);
+                let _ = router.handle_flood_response(&flood_response);
             }
         }
         Ok(())
