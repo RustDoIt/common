@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::{collections::HashMap, str::FromStr};
 use std::fmt::Display;
 use anyhow::anyhow;
@@ -243,12 +244,43 @@ impl Message {
     }
 }
 
+pub trait Command: Send {
+    fn as_any(&self) -> &dyn Any;
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+
+}
+
+impl<T: 'static + Send> Command for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
+
+pub trait Event: Send {
+    fn as_any(&self) -> &dyn Any;
+    fn into_any(self: Box<Self>) -> Box<dyn Any>;
+}
+
+impl<T: 'static + Send> Event for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn into_any(self: Box<Self>) -> Box<dyn Any> {
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum ChatCommand {
     GetChatsHistory,
     GetRegisteredClients,
     SendMessage(Message)
 }
+
 
 #[derive(Debug, Clone)]
 pub enum ChatEvent {
@@ -273,6 +305,7 @@ pub enum WebCommand {
     RemoveTextFile(Uuid),
     RemoveMediaFile(Uuid),
 }
+
 
 #[derive(Debug, Clone)]
 pub enum WebEvent {
@@ -304,6 +337,7 @@ pub enum NodeCommand {
     RemoveSender(NodeId),
     Shutdown,
 }
+
 
 impl NodeCommand {
     #[must_use]

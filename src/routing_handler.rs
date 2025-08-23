@@ -1,12 +1,9 @@
 use crate::{
     network::{Network, NetworkError, Node},
-    types::NodeEvent,
+    types::{Event, NodeEvent},
 };
 use crossbeam_channel::Sender;
-use std::{
-    any::Any,
-    collections::{HashMap, HashSet},
-};
+use std::collections::{HashMap, HashSet};
 use wg_internal::{
     network::{NodeId, SourceRoutingHeader},
     packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet},
@@ -85,7 +82,7 @@ pub struct RoutingHandler {
     flood_seen: HashSet<(u64, NodeId)>,
     session_counter: u64,
     flood_counter: u64,
-    controller_send: Sender<Box<dyn Any>>,
+    controller_send: Sender<Box<dyn Event>>,
     buffer: Buffer,
 }
 
@@ -95,7 +92,7 @@ impl RoutingHandler {
         id: NodeId,
         node_type: NodeType,
         neighbors: HashMap<NodeId, Sender<Packet>>,
-        controller_send: Sender<Box<dyn Any>>,
+        controller_send: Sender<Box<dyn Event>>,
     ) -> Self {
         Self {
             id,
@@ -506,6 +503,7 @@ mod routing_handler_tests {
         handler.start_flood().unwrap();
 
         let packet = receiver.try_recv().unwrap();
+        let packet = packet.into_any();
         if let Ok(cmd) = packet.downcast::<NodeEvent>() {
             assert!(matches!(*cmd, NodeEvent::FloodStarted(_, _)));
         }
@@ -566,7 +564,7 @@ mod routing_handler_tests {
         handler.handle_ack(&ack, 1, 2);
     }
 
-    fn create_test_routing_handler() -> (RoutingHandler, Receiver<Box<dyn Any>>) {
+    fn create_test_routing_handler() -> (RoutingHandler, Receiver<Box<dyn Event>>) {
         let (controller_send, controller_recv) = unbounded();
         let (neighbor_send, _) = unbounded();
         let mut neighbors = HashMap::new();
