@@ -288,7 +288,7 @@ impl RoutingHandler {
                 .network_view
                 .change_node_type(source_id, NodeType::Drone),
 
-            NackType::UnexpectedRecipient(_) => todo!(),
+            NackType::UnexpectedRecipient(_) => todo!("Should fix network view accordingly"),
         }
 
         self.retry_send(session_id, nack.fragment_index, source_id)?;
