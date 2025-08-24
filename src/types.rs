@@ -192,6 +192,9 @@ pub enum WebResponse {
 
     #[serde(rename = "error_requested_not_found!")]
     ErrorFileNotFound(Uuid),
+
+    #[serde(rename = "error_uuid_parsing!")]
+    BadUuid(String),
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -287,7 +290,9 @@ pub enum ChatEvent {
     ChatHistory(HashMap<NodeId, Vec<Message>>),
     RegisteredClients(Vec<NodeId>),
     MessageSent,
-    MessageReceived(Message)
+    MessageReceived(Message),
+    ClientRegistered(NodeId, NodeId), // client_id, server_id
+    ClientListQueried(NodeId, NodeId), // requester_id, server_id
 }
 
 #[derive(Debug, Clone)]
@@ -321,6 +326,10 @@ pub enum WebEvent {
     TextFileRemoved(Uuid),
     MediaFileRemoved(Uuid),
     FileOperationError(String),
+    FileRequested(NodeId, String), // requester_id, file_id
+    FileServed(NodeId, String), // server_id, file_id
+    FilesListQueried(NodeId, NodeId), // requester_id, server_id
+    BadUid(NodeId, NodeId, String), // requester_id, server_id, uuid
 }
 
 
@@ -328,7 +337,10 @@ pub enum WebEvent {
 pub enum NodeEvent {
     PacketSent(Packet),
     FloodStarted(u64, NodeId),
-    NodeRemoved(NodeId)
+    NodeRemoved(NodeId),
+    MessageReceived(NodeId, NodeId), // from, to
+    MessageSent(NodeId, NodeId), // from, to
+    ServerTypeQueried(NodeId, NodeId), // requester_id, server_id
 }
 
 #[derive(Debug, Clone)]
