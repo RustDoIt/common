@@ -387,15 +387,16 @@ pub enum WebEvent {
     },
     FileRequested {
         notification_from: NodeId,
+        from: NodeId,
         uuid: String,
-    }, // requester_id, file_id
+    }, // server_id, requester_id, file_id
     FileServed {
         notification_from: NodeId,
         file: String,
     }, // server_id, file_id
     FilesListQueried {
         notification_from: NodeId,
-        to: NodeId,
+        from: NodeId,
     }, // requester_id, server_id
     BadUuid {
         notification_from: NodeId,
@@ -419,8 +420,8 @@ pub enum NodeEvent {
     }, // from, to
     ServerTypeQueried {
         notification_from: NodeId,
-        to: NodeId,
-    }, // requester_id, server_id
+        from: NodeId,
+    }, // server_id, requester_id
 }
 
 #[derive(Debug, Clone)]
