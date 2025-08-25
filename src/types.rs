@@ -458,3 +458,24 @@ pub enum ServerType {
     TextServer,
     MediaServer,
 }
+
+#[derive(Debug, Copy, Clone)]
+pub enum NodeType {
+    ChatServer,
+    ChatClient,
+    TextServer,
+    MediaServer,
+    WebBrowser,
+}
+
+impl Display for NodeType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Self::ChatClient => write!(f, "Chat-Client"),
+            Self::WebBrowser => write!(f, "Web-Browser"),
+            Self::ChatServer => write!(f, "Chat-Server"),
+            Self::MediaServer => write!(f, "Media-Server"),
+            Self::TextServer => write!(f, "Text-Server")
+        }
+    }
+}
