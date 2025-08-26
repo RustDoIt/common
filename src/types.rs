@@ -228,7 +228,7 @@ pub enum ChatResponse {
     RegistrationSuccess,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub struct Message {
     pub from: NodeId,
     pub to: NodeId,
@@ -278,7 +278,7 @@ pub enum ChatCommand {
     RegisterToServer(NodeId),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ChatEvent {
     ChatHistory {
         notification_from: NodeId,
@@ -338,7 +338,7 @@ pub enum WebCommand {
     GetTextFilesList,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum WebEvent {
     CachedFiles {
         notification_from: NodeId,
@@ -412,7 +412,7 @@ pub enum WebEvent {
     }, // requester_id, server_id, uuid
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NodeEvent {
     PacketSent(Packet),
     FloodStarted(u64, NodeId),
