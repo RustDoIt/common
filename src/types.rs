@@ -10,7 +10,7 @@ pub type Bytes = Vec<u8>;
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct MediaReference {
-    location: NodeId,
+    pub location: NodeId,
     pub id: Uuid,
 }
 
