@@ -1,7 +1,10 @@
-use crate::{network::NetworkError, types::Command, FragmentAssembler, RoutingHandler};
+use crate::{FragmentAssembler, RoutingHandler, network::NetworkError, types::Command};
 
-use crossbeam_channel::{select_biased, Receiver};
-use wg_internal::{network::NodeId, packet::{Packet, PacketType}};
+use crossbeam_channel::{Receiver, select_biased};
+use wg_internal::{
+    network::NodeId,
+    packet::{Packet, PacketType},
+};
 
 pub trait Processor: Send {
     fn controller_recv(&self) -> &Receiver<Box<dyn Command>>;
@@ -21,7 +24,7 @@ pub trait Processor: Send {
             PacketType::MsgFragment(fragment) => {
                 let idx = fragment.fragment_index;
                 let mut shr = pkt.routing_header.clone();
-                    shr.reverse();
+                shr.reverse();
                 self.routing_handler().send_ack(shr, pkt.session_id, idx)?;
                 if let Some(msg) = self.assembler().add_fragment(
                     fragment,
@@ -48,12 +51,14 @@ pub trait Processor: Send {
     }
 
     fn run(&mut self) {
+        let _ = self.routing_handler().start_flood();
         loop {
             select_biased! {
                 recv(self.controller_recv()) -> cmd => {
                     if let Ok(cmd) = cmd {
                         if self.handle_command(cmd) {
-                            println!("Sto terminando");
+                            // Terminate if handle_command returns true
+                            println!("Terminating");
                             return;
                         }
                     }
