@@ -275,6 +275,7 @@ pub enum ChatCommand {
     GetChatsHistory,
     GetRegisteredClients,
     SendMessage(Message),
+    RegisterToServer(NodeId),
 }
 
 #[derive(Debug, Clone)]
@@ -333,6 +334,8 @@ pub enum WebCommand {
     AddMediaFileFromPath(String),
     RemoveTextFile(Uuid),
     RemoveMediaFile(Uuid),
+    QueryTextFilesList,
+    GetTextFilesList,
 }
 
 #[derive(Debug, Clone)]
@@ -398,6 +401,10 @@ pub enum WebEvent {
         notification_from: NodeId,
         from: NodeId,
     }, // requester_id, server_id
+    FilesLists {
+        notification_from: NodeId,
+        files_map: HashMap<NodeId, Vec<String>>,
+    }, // browser_id, files_lists
     BadUuid {
         notification_from: NodeId,
         from: NodeId,
