@@ -1,78 +1,55 @@
-# Common
-This library contains all the code that is common between each component (clients and servers).
+# Overview of the `common` library
 
-## How to Instantiate a generic Node (client or server)
-It follows an example implementation of a generic Node (in this case a Server):
+The `common` library provides foundational components for a drone-based network simulation in Rust, supporting packet routing, fragmentation, reassembly, and node management in an unreliable network environment. It integrates with `wg_internal` for core packet and node primitives. Key design principles include idempotent operations, flood-based discovery, source routing, and resilience to packet drops or node crashes via acknowledgments and retries.
 
-```rust
-pub struct Server {
-    routing_handler: RoutingHandler,
-    received_messages: Vec<(String, String)>,
-    communication_server: Vec<NodeId>,
-    controller_recv: Receiver<Box<dyn Any>>,
-    packet_recv: Receiver<Packet>,
-    assembler: FragmentAssembler,
-    ...
-}
+## Modules and Key Components
 
-impl Server {
-    #[must_use]
-    pub fn new(
-        id: NodeId,
-        neighbors: HashMap<NodeId, Sender<Packet>>,
-        packet_recv: Receiver<Packet>,
-        controller_recv: Receiver<Box<dyn Any>>,
-        controller_send: Sender<Box<dyn Any>>,
-        ...
-    ) -> Self {
-        let routing_handler = RoutingHandler::new(id, NodeType::Client, neighbors, controller_send);
+### `types`
+Defines core data structures and enums for network entities, files, requests/responses, commands, and events.
 
-        Self {
-            routing_handler,
-            received_messages: vec![],
-            communication_server: vec![],
-            controller_recv,
-            packet_recv,
-            assembler: FragmentAssembler::default()
-            ...
-        }
-    }
-}
+- **MediaReference**: Represents a reference to media stored at a specific node (NodeId) with a UUID.
+- **TextFile**: Encapsulates a text file with title, content, and embedded media references.
+- **MediaFile**: Handles binary media files, chunked into 1024-byte segments for transmission.
+- **File**: Composite of a TextFile and associated MediaFiles.
+- **WebRequest/WebResponse**: Enums for web-like queries (e.g., server type, file lists, media retrieval) and responses (e.g., data delivery, errors like not found or UUID parsing failures).
+- **ChatRequest/ChatResponse**: Enums for chat operations (e.g., registration, client lists, messaging) and responses (e.g., message delivery, client lists).
+- **Event/Command**: Traits and enums for node-specific events (e.g., NodeEvent for packet sent/flood started) and commands (e.g., NodeCommand for adding/removing senders, shutdown).
+- **ChatEvent/WebEvent/NodeEvent**: Specific event variants for chat (e.g., message received, registration), web (e.g., file added/removed, queries), and general node operations.
+- **ClientType/ServerType/NodeType**: Enums classifying nodes (e.g., ChatClient, TextServer, Drone).
 
+### `assembler`
+Manages packet fragmentation and reassembly.
 
-impl Processor for Server {
-    fn controller_recv(&self) -> &Receiver<Box<dyn Any>> {
-        &self.controller_recv
-    }
+- **FragmentAssembler**: Tracks fragments by session ID and sender NodeId. Adds fragments, checks completeness via expected/received counts, and reassembles data into a complete message when all fragments arrive.
 
-    fn packet_recv(&self) -> &Receiver<Packet> {
-        &self.packet_recv
-    }
+### `file_conversion`
+Utilities for converting local files to library types.
 
-    fn handle_command(&mut self, cmd: Box<dyn Any>) {
-        if let Ok(cmd) = cmd.downcast::<ServerCommand>() {
-            match *cmd {
-                // match on server command
-            }
-        }
+- **file_to_media_file**: Reads binary file content, chunks it, and creates a MediaFile.
+- **file_to_text_file**: Reads text file content and creates a TextFile (without media refs by default).
 
-    }
+### `network`
+Models the network topology and operations.
 
-    fn assembler(&mut self) -> &mut FragmentAssembler {
-        &mut self.assembler
-    }
+- **NetworkError**: Enum for errors like path not found, node removal, or send failures.
+- **Node**: Represents a network node with ID, type (NodeType), and adjacent nodes.
+- **Network**: Maintains a list of nodes; supports adding/removing/updating nodes, changing types, finding shortest paths via BFS, and filtering by type (e.g., get_servers, get_clients).
 
-    fn routing_header(&mut self) -> &mut RoutingHandler {
-        &mut self.routing_handler
-    }
+### `routing_handler`
+Handles routing logic, including discovery and packet transmission.
 
-    fn handle_msg(&mut self, msg: Vec<u8>) {
+- **RoutingHandler**: Core struct managing node ID, network view (Network), neighbors (senders by NodeId), flood tracking, and buffers for packets/fragments.
+    - Initiates floods for discovery (start_flood).
+    - Handles flood requests/responses to update topology.
+    - Sends messages with fragmentation if >128 bytes (send_message).
+    - Processes acks (mark fragments received), nacks (retry or remove faulty nodes), and retries (retry_send).
+    - Manages neighbor addition/removal and buffering for pending packets.
 
-        if let Ok(msg) = serde_json::from_slice::<ClientRequest>(&msg) {
-            match msg {
-                // match on ClientRequest
-            }
-        }
-    }
-}
-```
+### `packet_processor`
+Defines processing loop for packets and commands.
+
+- **Processor**: Trait for entities that handle incoming packets and commands.
+    - Integrates FragmentAssembler and RoutingHandler.
+    - Processes packets (e.g., fragments to reassemble messages, acks/nacks/floods via routing handler).
+    - Runs an event loop selecting between controller commands (handle_command) and packets (handle_packet), with flood initiation on start.
+    - Subtypes must implement message handling (handle_msg) and command processing.
