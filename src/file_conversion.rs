@@ -1,6 +1,117 @@
-use std::fs;
+use std::fs::{self, File as StdFile};
 use std::path::Path;
-use crate::types::{MediaFile, TextFile};
+use crate::types::{MediaFile, TextFile, File};
+use std::io::Write;
+
+/// Saves a [`File`] into a directory named `cached_files_{notification_from}`.
+///
+/// The function writes the [`TextFile`] content and appends a line
+/// for each attached [`MediaFile`].
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be created or if the file cannot
+/// be created or written to.
+pub fn save_file(notification_from: &u8, file: &File) -> std::io::Result<()> {
+    let dir_name = format!("cached_files_{notification_from}");
+    let dir_path = Path::new(&dir_name);
+    fs::create_dir_all(dir_path)?;
+
+    let file_name = format!("{}_{}", file.text_file.id, file.text_file.title);
+    let file_path = dir_path.join(file_name);
+
+    let mut f = StdFile::create(file_path)?;
+    writeln!(f, "{}", file.text_file.content)?;
+    for media_file in &file.media_files {
+        writeln!(f, "MediaFile attached: {}_{}", media_file.id, media_file.title)?;
+    }
+    Ok(())
+}
+
+/// Saves a list of [`File`]s into `cached_files_{notification_from}` by
+/// delegating to [`save_file`] for each element.
+///
+/// # Errors
+///
+/// Returns an error if saving any single file fails.
+pub fn save_files(notification_from: &u8, files: &Vec<File>) -> std::io::Result<()> {
+    for file in files {
+        save_file(notification_from, file)?;
+    }
+    Ok(())
+}
+
+/// Saves a [`TextFile`] into `cached_files_{notification_from}`.
+///
+/// The function writes the text content and appends a line for each
+/// attached [`MediaReference`].
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be created or if the file cannot
+/// be created or written to.
+pub fn save_text_file(notification_from: &u8, file: &TextFile) -> std::io::Result<()> {
+    let dir_name = format!("cached_files_{notification_from}");
+    let dir_path = Path::new(&dir_name);
+    fs::create_dir_all(dir_path)?;
+
+    let file_name = format!("{}_{}", file.id, file.title);
+    let file_path = dir_path.join(file_name);
+
+    let mut f = StdFile::create(file_path)?;
+    writeln!(f, "{}", file.content)?;
+    for media_ref in &file.media_refs {
+        writeln!(f, "MediaFile attached: {}_{}", media_ref.location, media_ref.id)?;
+    }
+    Ok(())
+}
+
+/// Saves a list of [`TextFile`]s by delegating to [`save_text_file`].
+///
+/// # Errors
+///
+/// Returns an error if saving any single file fails.
+pub fn save_text_files(notification_from: &u8, files: &Vec<TextFile>) -> std::io::Result<()> {
+    for file in files {
+        save_text_file(notification_from, file)?;
+    }
+    Ok(())
+}
+
+/// Saves a single [`MediaFile`] into `cached_files_{notification_from}`.
+///
+/// The file is written as `{id}_{title}` and its binary content flushed.
+///
+/// # Errors
+///
+/// Returns an error if the directory cannot be created or if the file cannot
+/// be created or written to.
+pub fn save_media_file(notification_from: &u8, file: &MediaFile) -> std::io::Result<()> {
+    let dir_name = format!("cached_files_{notification_from}");
+    let dir_path = Path::new(&dir_name);
+    fs::create_dir_all(dir_path)?;
+
+    let file_name = format!("{}_{}", file.id, file.title);
+    let file_path = dir_path.join(file_name);
+
+    let mut f = StdFile::create(file_path)?;
+    for chunk in &file.content {
+        f.write_all(chunk)?;
+    }
+    Ok(())
+}
+
+/// Saves a list of [`MediaFile`]s by delegating to [`save_media_file`].
+///
+/// # Errors
+///
+/// Returns an error if saving any single file fails.
+pub fn save_media_files(notification_from: &u8, files: &[MediaFile]) -> std::io::Result<()> {
+    for file in files {
+        save_media_file(notification_from, file)?;
+    }
+    Ok(())
+}
 
 /// Converts a file path into a `MediaFile`.
 ///

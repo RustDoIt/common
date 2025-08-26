@@ -16,7 +16,7 @@ pub struct SerializedRequest {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct MediaReference {
-    location: NodeId,
+    pub location: NodeId,
     pub id: Uuid,
 }
 
@@ -135,7 +135,7 @@ impl MediaFile {
 pub struct File {
     pub id: Uuid,
     pub text_file: TextFile,
-    media_files: Vec<MediaFile>,
+    pub media_files: Vec<MediaFile>,
 }
 
 impl File {

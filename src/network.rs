@@ -54,10 +54,12 @@ impl Node {
         Self { id, kind, adjacents }
     }
 
+    #[must_use]
     pub fn get_id(&self) -> NodeId {
         self.id
     }
 
+    #[must_use]
     pub fn get_node_type(&self) -> NodeType {
         self.kind
     }
