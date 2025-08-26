@@ -3,6 +3,29 @@ use std::path::Path;
 use crate::types::{MediaFile, TextFile};
 use std::io::Write;
 
+pub fn save_text_file(notification_from: &u8, file: &TextFile) -> std::io::Result<()> {
+    let dir_name = format!("cached_files_{}", notification_from);
+    let dir_path = Path::new(&dir_name);
+    fs::create_dir_all(dir_path)?;
+
+    let file_name = format!("{}_{}", file.id, file.title);
+    let file_path = dir_path.join(file_name);
+
+    let mut f = File::create(file_path)?;
+    writeln!(f, "{}", file.content)?;
+    for media_ref in &file.media_refs {
+        writeln!(f, "MediaFile attached: {}_{}", media_ref.location, media_ref.id)?;
+    }
+    Ok(())
+}
+
+pub fn save_text_files(notification_from: &u8, files: &Vec<TextFile>) -> std::io::Result<()> {
+    for file in files {
+        save_text_file(notification_from, file)?;
+    }
+    Ok(())
+}
+
 pub fn save_media_file(notification_from: &u8, file: &MediaFile) -> std::io::Result<()> {
     let dir_name = format!("cached_files_{}", notification_from);
     let dir_path = Path::new(&dir_name);
