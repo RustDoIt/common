@@ -1,3 +1,4 @@
+use crate::types::SerializedRequest;
 use crate::{
     network::{Network, NetworkError, Node},
     types::{Event, NodeEvent},
@@ -14,6 +15,7 @@ struct Buffer {
     // represents packets which reached the destination
     packets_received: HashMap<(u64, NodeId), Vec<(bool, Packet)>>,
     packets_to_send: Vec<Packet>,
+    pending_ser_requests: HashSet<SerializedRequest>,
 }
 
 impl Buffer {
@@ -21,6 +23,7 @@ impl Buffer {
         Self {
             packets_received: HashMap::new(),
             packets_to_send: Vec::new(),
+            pending_ser_requests: HashSet::new(),
         }
     }
 
@@ -84,6 +87,7 @@ pub struct RoutingHandler {
     flood_counter: u64,
     controller_send: Sender<Box<dyn Event>>,
     buffer: Buffer,
+    node_type: NodeType
 }
 
 impl RoutingHandler {
@@ -103,6 +107,7 @@ impl RoutingHandler {
             flood_seen: HashSet::new(),
             controller_send,
             buffer: Buffer::new(),
+            node_type
         }
     }
 
@@ -123,7 +128,10 @@ impl RoutingHandler {
     /// and notifying the controller about the flood start.
     /// # Errors
     /// Returns an error if sending the packet to the controller fails or if sending to any neighbor fails.
-    pub fn start_flood(&mut self) -> Result<(), NetworkError> {
+    pub fn start_flood(
+        &mut self,
+        pending_request: Option<SerializedRequest>,
+    ) -> Result<(), NetworkError> {
         self.session_counter += 1;
         self.flood_counter += 1;
         let packet = Packet::new_flood_request(
@@ -141,6 +149,10 @@ impl RoutingHandler {
             if sender.send(packet.clone()).is_err() {
                 self.remove_neighbor(*node_id);
             }
+        }
+
+        if let Some(req) = pending_request {
+            self.buffer.pending_ser_requests.insert(req);
         }
         Ok(())
     }
@@ -161,12 +173,16 @@ impl RoutingHandler {
     /// Handle `flood_response`
     /// # Errors
     /// Returns error if can't send the packet
-    pub fn handle_flood_response (
+    pub fn handle_flood_response(
         &mut self,
         flood_response: &FloodResponse,
     ) -> Result<(), NetworkError> {
         if flood_response.flood_id == self.flood_counter {
             self.update_network_view(&flood_response.path_trace);
+            let requests = self.buffer.pending_ser_requests.drain().collect::<Vec<_>>();
+            for req in requests {
+                self.send_message(&req.data, req.to, None)?;
+            }
             for packet in self.buffer.get_packets_to_send() {
                 self.try_send(packet)?;
             }
@@ -215,7 +231,7 @@ impl RoutingHandler {
             .last()
             .map_or(flood_request.initiator_id, |x| x.0);
 
-        flood_request.path_trace.push((self.id, NodeType::Drone));
+        flood_request.path_trace.push((self.id, self.node_type));
 
         let flood_session = (flood_request.flood_id, flood_request.initiator_id);
 
@@ -279,7 +295,7 @@ impl RoutingHandler {
         match nack.nack_type {
             NackType::ErrorInRouting(id) => {
                 self.remove_neighbor(id);
-                self.start_flood()?;
+                self.start_flood(None)?;
             }
 
             NackType::Dropped => {}
@@ -353,7 +369,7 @@ impl RoutingHandler {
                         match self.try_find_path(destination) {
                             Ok(shr) => packet.routing_header = shr,
                             Err(NetworkError::PathNotFound(_)) => {
-                                self.start_flood()?;
+                                self.start_flood(None)?;
                                 self.buffer.add_pending_packet(packet.clone());
                             }
                             Err(e) => return Err(e),
@@ -378,39 +394,66 @@ impl RoutingHandler {
     pub fn send_message(
         &mut self,
         message: &[u8],
-        destination: NodeId,
+        destination: Option<NodeId>,
         session_id: Option<u64>,
     ) -> Result<(), NetworkError> {
-        let chunks: Vec<&[u8]> = message.chunks(128).collect();
-        let total_n_fragments = chunks.len();
+        // Split into 128-byte chunks
+        let chunks = message.chunks(128);
+        let total_n_fragments = chunks.len() as u64;
 
-        if session_id.is_none() {
+        // Decide session id
+        let session_id = session_id.unwrap_or_else(|| {
             self.session_counter += 1;
+            self.session_counter
+        });
+
+        if let Some(destination) = destination {
+            // Try to send directly
+            if let Ok(shr) = self.try_find_path(destination) {
+                for (i, chunk) in chunks.enumerate() {
+                    let fragment =
+                        Fragment::new(i as u64, total_n_fragments, Self::pad_chunk(chunk));
+                    let packet = Packet::new_fragment(shr.clone(), session_id, fragment);
+                    self.try_send(packet)?;
+                    
+                }
+                
+                self.controller_send.send(Box::new(NodeEvent::MessageSent {
+                    notification_from: self.id,
+                    to: destination,
+                })).map_err(|_e| NetworkError::ControllerDisconnected)?;
+                    
+                return Ok(());
+            }
+
+            // Path not found, try flooding passing the pending request
+            self.start_flood(Some(SerializedRequest {
+                to: Some(destination),
+                data: message.to_vec(),
+            }))?;
+
+            return Ok(());
         }
 
-        let shr = self.try_find_path(destination)?;
-
-        for (i, chunk) in chunks.into_iter().enumerate() {
-            // Pad/truncate to exactly 128 bytes
-            let mut arr = [0u8; 128];
-            arr[..chunk.len()].copy_from_slice(chunk);
-
-            let fragment = Fragment::new(i as u64, total_n_fragments as u64, arr);
-
-            let packet = Packet::new_fragment(
-                shr.clone(),
-                if let Some(id) = session_id {
-                    id
-                } else {
-                    self.session_counter
-                },
-                fragment,
-            );
-
-            self.try_send(packet)?;
+        // No explicit destination
+        if let Some(servers) = self.get_servers() {
+            for server in servers {
+                self.send_message(message, Some(server), Some(session_id))?;
+            }
+            return Ok(());
         }
 
-        Ok(())
+        // Fallback: flooding
+        self.start_flood(Some(SerializedRequest {
+            to: None,
+            data: message.to_vec(),
+        }))
+    }
+
+    fn pad_chunk(chunk: &[u8]) -> [u8; 128] {
+        let mut arr = [0u8; 128];
+        arr[..chunk.len()].copy_from_slice(chunk);
+        arr
     }
 
     pub fn handle_ack(&mut self, ack: &Ack, session_id: u64, from: NodeId) {
@@ -461,7 +504,7 @@ impl RoutingHandler {
 #[cfg(test)]
 mod routing_handler_tests {
     use super::*;
-    use crossbeam_channel::{unbounded, Receiver};
+    use crossbeam_channel::{Receiver, unbounded};
     use wg_internal::packet::PacketType;
 
     #[test]
@@ -500,7 +543,7 @@ mod routing_handler_tests {
         let (neighbor_sender, neighbor_receiver) = unbounded();
         handler.add_neighbor(2, neighbor_sender);
 
-        handler.start_flood().unwrap();
+        handler.start_flood(None).unwrap();
 
         let packet = receiver.try_recv().unwrap();
         let packet = packet.into_any();
@@ -542,7 +585,7 @@ mod routing_handler_tests {
         handler.add_neighbor(2, neighbor_sender);
 
         let message = b"Hello world".to_vec(); // 128 bytes total
-        handler.send_message(&message, 2, None).unwrap();
+        handler.send_message(&message, Some(2), None).unwrap();
 
         let packet = neighbor_receiver.try_recv().unwrap();
         assert!(matches!(packet.pack_type, PacketType::MsgFragment(_)));
@@ -558,7 +601,7 @@ mod routing_handler_tests {
         handler.add_neighbor(2, neighbor_sender);
 
         let message = b"Hello, world!".to_vec();
-        handler.send_message(&message, 2, None).unwrap();
+        handler.send_message(&message, Some(2), None).unwrap();
 
         let ack = Ack { fragment_index: 0 };
         handler.handle_ack(&ack, 1, 2);
@@ -621,7 +664,7 @@ mod routing_handler_tests {
             .network_view
             .add_node(Node::new(2, NodeType::Server, vec![1]));
         let large_message = b"A".repeat(500);
-        let _result = handler.send_message(&large_message, 2, None);
+        let _result = handler.send_message(&large_message, Some(2), None);
         //assert!(result.is_ok());
         //assert!(handler.buffer.packets_received.len() > 0);
         // todo!() asserts fail because of Err(PathNotFound(2))

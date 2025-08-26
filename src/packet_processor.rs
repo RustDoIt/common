@@ -51,7 +51,7 @@ pub trait Processor: Send {
     }
 
     fn run(&mut self) {
-        let _ = self.routing_handler().start_flood();
+        let _ = self.routing_handler().start_flood(None);
         loop {
             select_biased! {
                 recv(self.controller_recv()) -> cmd => {

@@ -8,6 +8,12 @@ use uuid::Uuid;
 use wg_internal::{network::NodeId, packet::Packet};
 pub type Bytes = Vec<u8>;
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+pub struct SerializedRequest {
+    pub to: Option<NodeId>,
+    pub data: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Hash, PartialEq, Eq)]
 pub struct MediaReference {
     location: NodeId,
@@ -310,7 +316,6 @@ pub enum ChatEvent {
     },
     ErrorClientNotFound {
         notification_from: NodeId,
-        location: NodeId,
         not_found: NodeId,
     },
 
