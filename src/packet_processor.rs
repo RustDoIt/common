@@ -1,3 +1,5 @@
+use std::sync::{Arc, Barrier};
+
 use crate::{FragmentAssembler, RoutingHandler, network::NetworkError, types::Command};
 
 use crossbeam_channel::{Receiver, select_biased};
@@ -25,6 +27,12 @@ pub trait Processor: Send {
                 let idx = fragment.fragment_index;
                 let mut shr = pkt.routing_header.clone();
                 shr.reverse();
+                shr.increase_hop_index();
+                assert!(
+                    shr.hop_index == 1,
+                    "hop_index should be 1, got {}",
+                    shr.hop_index
+                );
                 self.routing_handler().send_ack(shr, pkt.session_id, idx)?;
                 if let Some(msg) = self.assembler().add_fragment(
                     fragment,
@@ -50,7 +58,8 @@ pub trait Processor: Send {
         Ok(())
     }
 
-    fn run(&mut self) {
+    fn run(&mut self, barrier: Arc<Barrier>) {
+        barrier.wait();
         let _ = self.routing_handler().start_flood(None);
         loop {
             select_biased! {

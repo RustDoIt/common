@@ -87,7 +87,7 @@ pub struct RoutingHandler {
     flood_counter: u64,
     controller_send: Sender<Box<dyn Event>>,
     buffer: Buffer,
-    node_type: NodeType
+    node_type: NodeType,
 }
 
 impl RoutingHandler {
@@ -107,7 +107,7 @@ impl RoutingHandler {
             flood_seen: HashSet::new(),
             controller_send,
             buffer: Buffer::new(),
-            node_type
+            node_type,
         }
     }
 
@@ -137,7 +137,11 @@ impl RoutingHandler {
         let packet = Packet::new_flood_request(
             SourceRoutingHeader::empty_route(),
             self.session_counter,
-            FloodRequest::new(self.flood_counter, self.id),
+            FloodRequest {
+                flood_id: self.flood_counter,
+                initiator_id: self.id,
+                path_trace: vec![(self.id, self.node_type)],
+            },
         );
         self.controller_send
             .send(Box::new(NodeEvent::FloodStarted(
@@ -415,14 +419,15 @@ impl RoutingHandler {
                         Fragment::new(i as u64, total_n_fragments, Self::pad_chunk(chunk));
                     let packet = Packet::new_fragment(shr.clone(), session_id, fragment);
                     self.try_send(packet)?;
-                    
                 }
-                
-                self.controller_send.send(Box::new(NodeEvent::MessageSent {
-                    notification_from: self.id,
-                    to: destination,
-                })).map_err(|_e| NetworkError::ControllerDisconnected)?;
-                    
+
+                self.controller_send
+                    .send(Box::new(NodeEvent::MessageSent {
+                        notification_from: self.id,
+                        to: destination,
+                    }))
+                    .map_err(|_e| NetworkError::ControllerDisconnected)?;
+
                 return Ok(());
             }
 
