@@ -1,6 +1,5 @@
 use std::collections::hash_map::Entry::Vacant;
 use std::collections::HashMap;
-
 use wg_internal::{network::NodeId, packet::Fragment};
 
 
@@ -12,15 +11,15 @@ pub struct FragmentAssembler {
 impl FragmentAssembler {
     pub fn add_fragment(&mut self, fragment: Fragment, session_id: u64, sender: NodeId) -> Option<Vec<u8>> {
         let communication_id = ( session_id, sender );
-        if let Vacant(entry) = self.fragments.entry(communication_id) {
-            
-            entry.insert((fragment.total_n_fragments, vec![fragment]));
+        if let Some((_, fragments)) = self.fragments.get_mut(&communication_id) {
+            fragments.push(fragment);
+        } else {
+            self.fragments.insert(communication_id, (session_id, vec![fragment]));
         }
-        
-        let fragments = self.fragments.get(&communication_id)?;
 
+        let (total, fragments) = self.fragments.get_mut(&communication_id)?;
         // check if all fragments has been received
-        if fragments.0 == fragments.1.len() as u64 {
+        if *total == fragments.len() as u64 {
             let fragments = self.fragments.get_mut(&communication_id)?;
             fragments.1.sort_by(|t, n| t.fragment_index.cmp(&n.fragment_index));
             let mut data = vec![];
@@ -30,7 +29,7 @@ impl FragmentAssembler {
             if let Some(pos) = data.iter().position(|&b| b == 0) {
                 data.truncate(pos);
             }
-            
+
             let _ = self.fragments.remove(&communication_id);
             return Some(data);
         }
