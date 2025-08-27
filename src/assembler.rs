@@ -14,7 +14,7 @@ impl FragmentAssembler {
         if let Some((_, fragments)) = self.fragments.get_mut(&communication_id) {
             fragments.push(fragment);
         } else {
-            self.fragments.insert(communication_id, (session_id, vec![fragment]));
+            self.fragments.insert(communication_id, (fragment.total_n_fragments, vec![fragment]));
         }
 
         let (total, fragments) = self.fragments.get_mut(&communication_id)?;
