@@ -25,6 +25,7 @@ pub fn save_file(notification_from: &u8, file: &File) -> std::io::Result<()> {
     for media_file in &file.media_files {
         writeln!(f, "MediaFile attached: {}_{}", media_file.id, media_file.title)?;
     }
+    save_media_files(notification_from, &file.media_files)?;
     Ok(())
 }
 
@@ -138,7 +139,7 @@ pub fn file_to_media_file(file_path: &str) -> Result<MediaFile, Box<dyn std::err
 /// into a `TextFile`.
 pub fn file_to_text_file(file_path: &str) -> Result<TextFile, Box<dyn std::error::Error>> {
     let filename = Path::new(file_path)
-        .file_stem()
+        .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("unknown")
         .to_string();
