@@ -316,6 +316,7 @@ pub enum ChatEvent {
     },
     ErrorClientNotFound {
         notification_from: NodeId,
+        location: NodeId,
         not_found: NodeId,
     },
 
