@@ -5,6 +5,7 @@ use crate::{
 };
 use crossbeam_channel::Sender;
 use std::collections::{HashMap, HashSet};
+use rand::Rng;
 use wg_internal::{
     network::{NodeId, SourceRoutingHeader},
     packet::{Ack, FloodRequest, FloodResponse, Fragment, Nack, NackType, NodeType, Packet},
@@ -13,7 +14,7 @@ use wg_internal::{
 #[derive(Debug, Clone)]
 struct Buffer {
     // represents packets which reached the destination
-    packets_received: HashMap<(u64, NodeId), Vec<(bool, Packet)>>,
+    packets_received: HashMap<u64, Vec<(bool, Packet)>>,
     packets_to_send: Vec<Packet>,
     pending_ser_requests: HashSet<SerializedRequest>,
 }
@@ -27,8 +28,8 @@ impl Buffer {
         }
     }
 
-    fn insert(&mut self, packet: Packet, session_id: u64, from: NodeId) {
-        let id = (session_id, from);
+    fn insert(&mut self, packet: Packet, session_id: u64) {
+        let id = session_id;
         if let Some(v) = self.packets_received.get_mut(&id) {
             v.push((false, packet));
         } else {
@@ -36,8 +37,8 @@ impl Buffer {
         }
     }
 
-    fn mark_as_received(&mut self, session_id: u64, fragment_index: u64, form: NodeId) {
-        let id = (session_id, form);
+    fn mark_as_received(&mut self, session_id: u64, fragment_index: u64) {
+        let id = session_id;
         if let Some(f) = self.packets_received.get_mut(&id) {
             #[allow(clippy::cast_possible_truncation)]
             let index = fragment_index as usize;
@@ -55,9 +56,8 @@ impl Buffer {
         &mut self,
         session_id: u64,
         fragment_index: u64,
-        from: NodeId,
     ) -> Option<Packet> {
-        let id = (session_id, from);
+        let id = session_id;
         if let Some(session) = self.packets_received.get(&id) {
             #[allow(clippy::cast_possible_truncation)]
             session
@@ -84,6 +84,7 @@ pub struct RoutingHandler {
     neighbors: HashMap<NodeId, Sender<Packet>>,
     flood_seen: HashSet<(u64, NodeId)>,
     session_counter: u64,
+    session_id: u64,
     flood_counter: u64,
     controller_send: Sender<Box<dyn Event>>,
     buffer: Buffer,
@@ -103,12 +104,19 @@ impl RoutingHandler {
             network_view: Network::new(Node::new(id, node_type, vec![])),
             neighbors,
             session_counter: 0,
+            session_id: 0,
             flood_counter: 0,
             flood_seen: HashSet::new(),
             controller_send,
             buffer: Buffer::new(),
             node_type,
         }
+    }
+
+    fn update_session_id(&mut self) {
+        let mut rng = rand::rng();
+        self.session_counter += 1;
+        self.session_id = rng.random()
     }
 
     /// Sends a packet to a specific neighbor and notifies the controller about the packet sent.
@@ -132,11 +140,11 @@ impl RoutingHandler {
         &mut self,
         pending_request: Option<SerializedRequest>,
     ) -> Result<(), NetworkError> {
-        self.session_counter += 1;
+        self.update_session_id();
         self.flood_counter += 1;
         let packet = Packet::new_flood_request(
             SourceRoutingHeader::empty_route(),
-            self.session_counter,
+            self.session_id,
             FloodRequest {
                 flood_id: self.flood_counter,
                 initiator_id: self.id,
@@ -325,7 +333,7 @@ impl RoutingHandler {
             if let Some(sender) = self.neighbors.get(&first_hop) {
                 self.send(sender, packet.clone())?;
                 let session_id = packet.session_id;
-                self.buffer.insert(packet, session_id, self.id);
+                self.buffer.insert(packet, session_id);
             } else {
                 return Err(NetworkError::NodeIsNotANeighbor(first_hop));
             }
@@ -399,17 +407,20 @@ impl RoutingHandler {
         &mut self,
         message: &[u8],
         dest: Option<NodeId>,
-        session_id: Option<u64>,
+        sid: Option<u64>,
     ) -> Result<(), NetworkError> {
         // Split into 128-byte chunks
         let chunks = message.chunks(128);
         let total_n_fragments = chunks.len() as u64;
 
         // Decide session id
-        let session_id = session_id.unwrap_or_else(|| {
-            self.session_counter += 1;
-            self.session_counter
-        });
+        let session_id: u64;
+        if let Some(id) = sid {
+            session_id = id;
+        } else {
+            self.update_session_id();
+            session_id = self.session_id;
+        }
 
         if let Some(destination) = dest {
             // Try to send directly
@@ -465,7 +476,7 @@ impl RoutingHandler {
 
     pub fn handle_ack(&mut self, ack: &Ack, session_id: u64, from: NodeId) {
         self.buffer
-            .mark_as_received(session_id, ack.fragment_index, from);
+            .mark_as_received(session_id, ack.fragment_index);
     }
 
     /// Retries sending a specific packet identified by `session_id` and `fragment_index` from a specific node.
@@ -480,7 +491,7 @@ impl RoutingHandler {
     ) -> Result<(), NetworkError> {
         if let Some(packet) = self
             .buffer
-            .get_fragment_by_id(session_id, fragment_index, from)
+            .get_fragment_by_id(session_id, fragment_index)
         {
             self.try_send(packet)?;
         }
