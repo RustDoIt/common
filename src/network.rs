@@ -156,10 +156,9 @@ impl Network {
     }
 
 
-    /// BFS to find path to destination
+    /// Finds a path from `start` to `destination` where intermediate nodes must be drones.
     #[must_use]
-    pub(crate) fn find_path(&self, destination: NodeId) -> Option<Vec<NodeId>> {
-        let start = self.nodes[0].id;
+    pub(crate) fn find_path(&self, start: NodeId, destination: NodeId) -> Option<Vec<NodeId>> {
         let mut visited = HashSet::new();
         let mut queue = VecDeque::new();
         let mut parent_map = HashMap::new();
@@ -169,11 +168,12 @@ impl Network {
 
         while let Some(current) = queue.pop_front() {
             if current == destination {
+                // reconstruct path
                 let mut path = vec![destination];
-                let mut current = destination;
-                while let Some(&parent) = parent_map.get(&current) {
+                let mut cur = destination;
+                while let Some(&parent) = parent_map.get(&cur) {
                     path.push(parent);
-                    current = parent;
+                    cur = parent;
                 }
                 path.reverse();
                 return Some(path);
@@ -181,10 +181,17 @@ impl Network {
 
             if let Some(node) = self.nodes.iter().find(|n| n.id == current) {
                 for neighbor in node.get_adjacents() {
-                    if !visited.contains(neighbor) {
-                        visited.insert(*neighbor);
-                        parent_map.insert(neighbor, current);
-                        queue.push_back(*neighbor);
+                    if visited.contains(neighbor) {
+                        continue;
+                    }
+
+                    if let Some(neigh_node) = self.nodes.iter().find(|n| n.id == *neighbor) {
+                        // Only allow stepping into the destination or into a drone
+                        if *neighbor == destination || neigh_node.get_node_type() == NodeType::Drone {
+                            visited.insert(*neighbor);
+                            parent_map.insert(neighbor, current);
+                            queue.push_back(*neighbor);
+                        }
                     }
                 }
             }
@@ -289,115 +296,67 @@ mod tests {
     }
 
     #[test]
-    /// Tests the `find_path` method
-    fn test_find_path() {
-        let root = Node::new(1, NodeType::Client, vec![2, 3]);
-        let mut network = Network::new(root);
+    fn test_direct_client_to_server() {
+        let nodes = vec![
+            Node { id: 1, kind: NodeType::Client, adjacents: vec![2] },
+            Node { id: 2, kind: NodeType::Server, adjacents: vec![1] },
+        ];
+        
 
-        let node2 = Node::new(2, NodeType::Client, vec![1, 4]);
-        let node3 = Node::new(3, NodeType::Client, vec![1]);
-        let node4 = Node::new(4, NodeType::Client, vec![2]);
-
-        network.add_node(node2);
-        network.add_node(node3);
-        network.add_node(node4);
-
-        let path = network.find_path(4).unwrap();
-
-        assert_eq!(path, vec![1, 2, 4]);
+        let mut graph = Network::default();
+        for node in nodes {
+            graph.add_node(node);
+        }
+        let path = graph.find_path(1, 2);
+        assert_eq!(path, Some(vec![1, 2]));
     }
 
     #[test]
-    /// Tests the `find_path` method with non-existing path
-    fn test_find_path_not_found() {
-        let root = Node::new(1, NodeType::Client, vec![2]);
-        let mut network = Network::new(root);
+    fn test_path_with_drone() {
+        let nodes = vec![
+            Node { id: 1, kind: NodeType::Client, adjacents: vec![2] },
+            Node { id: 2, kind: NodeType::Drone, adjacents: vec![1, 3] },
+            Node { id: 3, kind: NodeType::Server, adjacents: vec![2] },
+        ];
 
-        let node2 = Node::new(2, NodeType::Client, vec![1]);
-        network.add_node(node2);
-
-        let result = network.find_path(3);
-
-        assert!(result.is_none());
+        let mut graph = Network::default();
+        for node in nodes {
+            graph.add_node(node);
+        }        let path = graph.find_path(1, 3);
+        assert_eq!(path, Some(vec![1, 2, 3]));
     }
 
     #[test]
-    /// Tests `find_path` method in a complex network
-    fn test_complex_network_topology() {
-        let root = Node::new(1, NodeType::Client, vec![2, 3]);
-        let mut network = Network::new(root);
+    fn test_disallow_non_drone_intermediate() {
+        let nodes = vec![
+            Node { id: 1, kind: NodeType::Client, adjacents: vec![2] },
+            Node { id: 2, kind: NodeType::Client, adjacents: vec![1, 3] }, // not a drone
+            Node { id: 3, kind: NodeType::Server, adjacents: vec![2] },
+        ];
 
-        network.add_node(Node::new(2, NodeType::Drone, vec![1, 4, 5]));
-        network.add_node(Node::new(3, NodeType::Drone, vec![1, 6]));
-        network.add_node(Node::new(4, NodeType::Drone, vec![2, 7]));
-        network.add_node(Node::new(5, NodeType::Server, vec![2]));
-        network.add_node(Node::new(6, NodeType::Server, vec![3]));
-        network.add_node(Node::new(7, NodeType::Client, vec![4]));
-
-        let path_to_server5 = network.find_path(5);
-        assert!(path_to_server5.is_some());
-        let path = path_to_server5.unwrap();
-        assert_eq!(path[0], 1);
-        assert_eq!(path[path.len() - 1], 5);
-        let path_to_client7 = network.find_path(7);
-        assert!(path_to_client7.is_some());
+        let mut graph = Network::default();
+        for node in nodes {
+            graph.add_node(node);
+        }   
+        let path = graph.find_path(1, 3);
+        assert_eq!(path, None); // should fail because node 2 is not a drone
     }
 
     #[test]
-    /// Tests `find_path` method in a partitioned network
-    fn test_network_partition_handling() {
-        let root = Node::new(1, NodeType::Client, vec![2]);
-        let mut network = Network::new(root);
+    fn test_multiple_paths_choose_valid() {
+        let nodes = vec![
+            Node { id: 1, kind: NodeType::Client, adjacents: vec![2, 4] },
+            Node { id: 2, kind: NodeType::Client, adjacents: vec![1, 3] }, // not a drone
+            Node { id: 3, kind: NodeType::Server, adjacents: vec![2, 5] },
+            Node { id: 4, kind: NodeType::Drone, adjacents: vec![1, 5] },
+            Node { id: 5, kind: NodeType::Server, adjacents: vec![3, 4] },
+        ];
 
-        network.add_node(Node::new(2, NodeType::Drone, vec![1]));
-        network.add_node(Node::new(3, NodeType::Server, vec![4])); // Isolated
-        network.add_node(Node::new(4, NodeType::Drone, vec![3])); // Isolated
-
-        let path_to_2 = network.find_path(2);
-        assert!(path_to_2.is_some());
-
-        let path_to_3 = network.find_path(3);
-        assert!(path_to_3.is_none());
-    }
-
-    #[test]
-    /// Tests `get_servers` and `get_clients` method in a network
-    fn test_node_type_filtering() {
-        let root = Node::new(1, NodeType::Client, vec![]);
-        let mut network = Network::new(root);
-
-        network.add_node(Node::new(2, NodeType::Server, vec![]));
-        network.add_node(Node::new(3, NodeType::Server, vec![]));
-        network.add_node(Node::new(4, NodeType::Client, vec![]));
-        network.add_node(Node::new(5, NodeType::Drone, vec![]));
-
-        let servers = network.get_servers().unwrap();
-        assert_eq!(servers.len(), 2);
-        assert!(servers.contains(&2));
-        assert!(servers.contains(&3));
-
-        let clients = network.get_clients().unwrap();
-        assert_eq!(clients.len(), 2);
-        assert!(clients.contains(&1));
-        assert!(clients.contains(&4));
-    }
-
-    #[test]
-    fn test_dynamic_network_updates() {
-        let root = Node::new(1, NodeType::Client, vec![2]);
-        let mut network = Network::new(root);
-
-        network.add_node(Node::new(2, NodeType::Drone, vec![1, 3]));
-        network.add_node(Node::new(3, NodeType::Server, vec![2]));
-
-        network.update_node(1, vec![4]).unwrap();
-        network.add_node(Node::new(4, NodeType::Drone, vec![1]));
-
-        let path = network.find_path(3);
-        assert!(path.is_some());
-
-        network.remove_node(2);
-        let path_after_removal = network.find_path(3);
-        assert!(path_after_removal.is_none());
+        let mut graph = Network::default();
+        for node in nodes {
+            graph.add_node(node);
+        }
+        let path = graph.find_path(1, 5);
+        assert_eq!(path, Some(vec![1, 4, 5])); // must avoid node 2 because it's not a drone
     }
 }

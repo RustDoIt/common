@@ -243,7 +243,7 @@ impl RoutingHandler {
 
         if !self.flood_seen.insert(flood_session) || self.neighbors.len() == 1 {
             // generate flood response
-            let route = if let Some(path) = self.network_view.find_path(flood_request.initiator_id)
+            let route = if let Some(path) = self.network_view.find_path(self.id, flood_request.initiator_id)
             {
                 SourceRoutingHeader::new(path, 1)
             } else {
@@ -338,7 +338,7 @@ impl RoutingHandler {
             return Ok(SourceRoutingHeader::empty_route());
         }
 
-        if let Some(path) = self.network_view.find_path(destination) {
+        if let Some(path) = self.network_view.find_path(self.id, destination) {
             return Ok(SourceRoutingHeader::new(path, 1).without_loops());
         }
         Err(NetworkError::PathNotFound(destination))
@@ -398,7 +398,7 @@ impl RoutingHandler {
     pub fn send_message(
         &mut self,
         message: &[u8],
-        destination: Option<NodeId>,
+        dest: Option<NodeId>,
         session_id: Option<u64>,
     ) -> Result<(), NetworkError> {
         // Split into 128-byte chunks
@@ -411,7 +411,7 @@ impl RoutingHandler {
             self.session_counter
         });
 
-        if let Some(destination) = destination {
+        if let Some(destination) = dest {
             // Try to send directly
             if let Ok(shr) = self.try_find_path(destination) {
                 for (i, chunk) in chunks.enumerate() {
@@ -436,6 +436,8 @@ impl RoutingHandler {
                 to: Some(destination),
                 data: message.to_vec(),
             }))?;
+            
+            
 
             return Ok(());
         }
@@ -639,7 +641,7 @@ mod routing_handler_tests {
         };
         let _ = handler.handle_flood_response(&flood_response);
 
-        let path_to_server = handler.network_view.find_path(2);
+        let path_to_server = handler.network_view.find_path(1,  2);
         assert_eq!(path_to_server, Some(vec![1, 3, 4, 2]));
     }
 

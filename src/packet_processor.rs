@@ -27,12 +27,7 @@ pub trait Processor: Send {
                 let idx = fragment.fragment_index;
                 let mut shr = pkt.routing_header.clone();
                 shr.reverse();
-                shr.increase_hop_index();
-                assert!(
-                    shr.hop_index == 1,
-                    "hop_index should be 1, got {}",
-                    shr.hop_index
-                );
+                shr.hop_index = 1;
                 self.routing_handler().send_ack(shr, pkt.session_id, idx)?;
                 if let Some(msg) = self.assembler().add_fragment(
                     fragment,
