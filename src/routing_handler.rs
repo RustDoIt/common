@@ -31,6 +31,11 @@ impl Buffer {
     fn insert(&mut self, packet: Packet, session_id: u64) {
         let id = session_id;
         if let Some(v) = self.packets_received.get_mut(&id) {
+            for (_, p) in v.iter() {
+                if p.get_fragment_index() == packet.get_fragment_index() {
+                    return; // already exists
+                }
+            }
             v.push((false, packet));
         } else {
             let _ = self.packets_received.insert(id, vec![(false, packet)]);

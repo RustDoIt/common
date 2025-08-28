@@ -12,6 +12,9 @@ impl FragmentAssembler {
     pub fn add_fragment(&mut self, fragment: Fragment, session_id: u64, sender: NodeId) -> Option<Vec<u8>> {
         let communication_id = ( session_id, sender );
         if let Some((_, fragments)) = self.fragments.get_mut(&communication_id) {
+            if fragments.iter().any(|f| f.fragment_index == fragment.fragment_index) {
+                return None; // duplicate fragment
+            }
             fragments.push(fragment);
         } else {
             self.fragments.insert(communication_id, (fragment.total_n_fragments, vec![fragment]));

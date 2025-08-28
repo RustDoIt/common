@@ -31,7 +31,7 @@ pub trait Processor: Send {
                 self.routing_handler().send_ack(shr, pkt.session_id, idx)?;
                 if let Some(msg) = self.assembler().add_fragment(
                     fragment,
-                    pkt.session_id,
+                        pkt.session_id,
                     pkt.routing_header.hops[0],
                 ) {
                     self.handle_msg(msg, pkt.routing_header.hops[0], pkt.session_id);
